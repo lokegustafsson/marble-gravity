@@ -11,7 +11,7 @@ pub struct Body {
 impl Body {
     pub fn initial() -> Body {
         fn pos() -> f32 {
-            1.0 * (rand::random::<f32>() - 0.5)
+            2.0 * (rand::random::<f32>() - 0.5)
         }
         Body {
             pos: [pos(), pos(), pos()].into(),
@@ -27,20 +27,39 @@ impl Body {
     }
     pub fn update(&self, others: &[Body], dt: f32) -> Body {
         let mut accel = Vector3::zero();
+        let mut post_collision_vel = self.vel;
         for body in others {
-            if self.pos.distance(body.pos) < self.radius + body.radius {
-                // Intersecting
+            let rel_pos_other = body.pos - self.pos;
+            if body.pos == self.pos {
+                // Same body
                 continue;
+            } else if rel_pos_other.magnitude2() < (self.radius + body.radius).powi(2) {
+                // Almost-elastic collision
+                const RESTITUTION: f32 = 1.0;
+                let rel_pos_norm = rel_pos_other.normalize();
+                let vel_towards_other = self.vel.dot(rel_pos_norm);
+                let vel_towards_self = body.vel.dot(-rel_pos_norm);
+                if vel_towards_other + vel_towards_self < 0.0 {
+                    // Already separating from each other
+                    continue;
+                }
+                let mass_self = self.radius.powi(3);
+                let mass_other = body.radius.powi(3);
+                let new_vel_from_other =
+                    (RESTITUTION * mass_other * (vel_towards_self - vel_towards_other)
+                        + mass_self * vel_towards_other
+                        + mass_other * vel_towards_self)
+                        / (mass_self + mass_other);
+                post_collision_vel -= (new_vel_from_other + vel_towards_other) * rel_pos_norm;
             } else {
-                // Not intersecting
-                let volume = 4.0 / 3.0 * std::f32::consts::PI * body.radius.powi(3);
-                let position = body.pos - self.pos;
-                accel += GRAVITY_CONSTANT * volume / position.magnitude().powi(3) * position;
+                // Gravitational interaction
+                let distance_cubed = rel_pos_other.magnitude().powi(3);
+                accel += GRAVITY_CONSTANT * body.radius.powi(3) / distance_cubed * rel_pos_other;
             }
         }
         Body {
-            pos: self.pos + self.vel * dt + accel * dt * dt / 2.0,
-            vel: self.vel + accel * dt,
+            pos: self.pos + (self.vel + post_collision_vel) / 2.0 * dt + accel * dt * dt / 2.0,
+            vel: post_collision_vel + accel * dt,
             radius: self.radius,
         }
     }

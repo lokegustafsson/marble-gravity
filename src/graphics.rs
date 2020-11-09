@@ -131,7 +131,6 @@ impl Graphics {
                 .par_iter()
                 .map(|b| RawBody::new(b, &world_to_camera))
                 .collect();
-            info!("First body: {:?}", raw_bodies[0]);
             self.queue
                 .write_buffer(&self.body_buffer, 0, bytemuck::cast_slice(&raw_bodies));
             if self.uniforms_are_new {

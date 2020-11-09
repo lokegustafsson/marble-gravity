@@ -1,7 +1,8 @@
 use cgmath::{prelude::*, Vector3};
 
 pub const BODIES: u32 = 100;
-const GRAVITY_CONSTANT: f32 = 1.0;
+const GRAVITY_CONSTANT: f32 = 5.0;
+const RESTITUTION: f32 = 0.9;
 
 pub struct Body {
     pos: Vector3<f32>,
@@ -35,7 +36,6 @@ impl Body {
                 continue;
             } else if rel_pos_other.magnitude2() < (self.radius + body.radius).powi(2) {
                 // Almost-elastic collision
-                const RESTITUTION: f32 = 1.0;
                 let rel_pos_norm = rel_pos_other.normalize();
                 let vel_towards_other = self.vel.dot(rel_pos_norm);
                 let vel_towards_self = body.vel.dot(-rel_pos_norm);

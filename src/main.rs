@@ -2,6 +2,7 @@ mod camera;
 mod graphics;
 mod physics;
 
+use anyhow::*;
 use async_std::task::block_on;
 use camera::Camera;
 use graphics::Graphics;
@@ -12,7 +13,7 @@ use winit::{
     dpi::PhysicalPosition,
     event::{Event, ModifiersState, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    window::{Window, WindowBuilder},
 };
 
 fn main() -> Result<(), anyhow::Error> {
@@ -28,7 +29,7 @@ fn main() -> Result<(), anyhow::Error> {
     let mut camera = Camera::new();
     let mut bodies: Vec<Body> = (0..BODIES).into_iter().map(|_| Body::initial()).collect();
     let mut last_update = Instant::now();
-    let mut capture_mouse = true;
+    let mut capture_mouse = false;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -41,19 +42,9 @@ fn main() -> Result<(), anyhow::Error> {
                 WindowEvent::Resized(new_size) => graphics.resize(new_size),
                 WindowEvent::ModifiersChanged(mods) => {
                     if mods | ModifiersState::SHIFT == ModifiersState::SHIFT {
-                        window.set_cursor_grab(true).unwrap();
-                        window.set_cursor_visible(false);
-                        let size = window.inner_size();
-                        window
-                            .set_cursor_position(PhysicalPosition::new(
-                                size.width / 2,
-                                size.height / 2,
-                            ))
-                            .unwrap();
-                        capture_mouse = true;
+                        capture_mouse = begin_capture_mouse(&window).is_ok();
                     } else {
-                        window.set_cursor_grab(false).unwrap();
-                        window.set_cursor_visible(true);
+                        stop_capture_mouse(&window);
                         capture_mouse = false;
                     }
                 }
@@ -67,15 +58,9 @@ fn main() -> Result<(), anyhow::Error> {
                     position: pos,
                     modifiers: _,
                 } => {
-                    if capture_mouse {
+                    if capture_mouse && continue_capture_mouse(&window) {
                         let size = window.inner_size();
                         camera.mouse_input(pos.x, pos.y, size.width, size.height);
-                        window
-                            .set_cursor_position(PhysicalPosition::new(
-                                size.width / 2,
-                                size.height / 2,
-                            ))
-                            .unwrap();
                     }
                 }
                 _ => {}
@@ -98,4 +83,22 @@ fn main() -> Result<(), anyhow::Error> {
             _ => {}
         }
     });
+}
+
+fn begin_capture_mouse(window: &Window) -> Result<()> {
+    window.set_cursor_grab(true)?;
+    let size = window.inner_size();
+    window.set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2))?;
+    window.set_cursor_visible(false);
+    Ok(())
+}
+fn continue_capture_mouse(window: &Window) -> bool {
+    let size = window.inner_size();
+    window
+        .set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2))
+        .is_ok()
+}
+fn stop_capture_mouse(window: &Window) {
+    window.set_cursor_grab(false).unwrap();
+    window.set_cursor_visible(true);
 }

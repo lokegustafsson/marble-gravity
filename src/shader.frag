@@ -22,8 +22,9 @@ layout(set=0, binding=1) uniform Uniforms {
 // - Roughness
 // - Index of refraction relative to air
 void main() {
-    vec2 frag_pos = gl_FragCoord.xy / window_size.x;
-    vec3 camera_ray = vec3(frag_pos - 0.5, 1);
+    vec2 frag_pos = gl_FragCoord.xy / window_size.y;
+    vec2 mid_frag_pos = vec2(0.5 * window_size.x / window_size.y, 0.5);
+    vec3 camera_ray = vec3(frag_pos - mid_frag_pos, 1);
     bool ray_hits_body = false;
 
     for (int i = 0; i < bodies.length(); i++) {

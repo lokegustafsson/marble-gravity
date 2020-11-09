@@ -15,9 +15,9 @@ struct Uniforms {
     window_size: Vector2<f32>,
 }
 impl Uniforms {
-    pub fn new(window_size: Vector2<u32>) -> Self {
+    pub fn new((width, height): (u32, u32)) -> Self {
         Self {
-            window_size: window_size.cast().unwrap(),
+            window_size: Vector2::new(width as f32, height as f32),
         }
     }
 }
@@ -58,35 +58,14 @@ pub struct Graphics {
 impl Graphics {
     pub async fn initialize(window: &Window) -> Result<Self> {
         let instance = Instance::new(BackendBit::PRIMARY);
-
         let surface = unsafe { instance.create_surface(window) };
+        let adapter = make_adapter(&instance, &surface).await?;
+        let (device, queue) = make_device_and_queue(&adapter).await?;
 
-        let adapter = instance
-            .request_adapter(&RequestAdapterOptionsBase {
-                power_preference: PowerPreference::default(),
-                compatible_surface: Some(&surface),
-            })
-            .await
-            .context("Failed to acquire adapter")?;
         info!("Found and acquired adapter:\n{:?}", adapter.get_info());
 
-        let (device, queue) = adapter
-            .request_device(
-                &DeviceDescriptor {
-                    features: Features::empty(),
-                    limits: Limits::default(),
-                    shader_validation: true,
-                },
-                None, // Trace path
-            )
-            .await
-            .context("Failed to acquire device")?;
-
-        let size = {
-            let w_size = window.inner_size();
-            Vector2::new(w_size.width, w_size.height)
-        };
-        let swap_chain = make_swap_chain(&device, &surface, size.x, size.y);
+        let size: (u32, u32) = window.inner_size().into();
+        let swap_chain = make_swap_chain(&device, &surface, size);
         let uniforms = Uniforms::new(size);
 
         let body_buffer = device.create_buffer(&BufferDescriptor {
@@ -103,7 +82,6 @@ impl Graphics {
             mapped_at_creation: false, // See above
         });
 
-        // TODO think real hard about lighting
         let render_tasks = make_render_tasks(&device, &body_buffer, &uniforms_buffer);
 
         Ok(Self {
@@ -119,10 +97,9 @@ impl Graphics {
         })
     }
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
-        self.uniforms = Uniforms::new(Vector2::new(new_size.width, new_size.height));
+        self.uniforms = Uniforms::new(new_size.into());
         self.uniforms_are_new = true;
-        self.swap_chain =
-            make_swap_chain(&self.device, &self.surface, new_size.width, new_size.height);
+        self.swap_chain = make_swap_chain(&self.device, &self.surface, new_size.into());
     }
     pub fn render(&mut self, bodies: &[Body], world_to_camera: Matrix4<f32>) {
         // Copy state to GPU
@@ -274,7 +251,7 @@ fn make_pipeline(device: &Device, bind_group_layout: &BindGroupLayout) -> Render
     })
 }
 
-fn make_swap_chain(device: &Device, surface: &Surface, width: u32, height: u32) -> SwapChain {
+fn make_swap_chain(device: &Device, surface: &Surface, (width, height): (u32, u32)) -> SwapChain {
     device.create_swap_chain(
         surface,
         &SwapChainDescriptor {
@@ -285,4 +262,28 @@ fn make_swap_chain(device: &Device, surface: &Surface, width: u32, height: u32) 
             present_mode: PresentMode::Fifo,
         },
     )
+}
+
+async fn make_adapter(instance: &Instance, surface: &Surface) -> Result<Adapter> {
+    instance
+        .request_adapter(&RequestAdapterOptionsBase {
+            power_preference: PowerPreference::default(),
+            compatible_surface: Some(&surface),
+        })
+        .await
+        .context("Failed to acquire adapter")
+}
+
+async fn make_device_and_queue(adapter: &Adapter) -> Result<(Device, Queue)> {
+    adapter
+        .request_device(
+            &DeviceDescriptor {
+                features: Features::empty(),
+                limits: Limits::default(),
+                shader_validation: true,
+            },
+            None, // Trace path
+        )
+        .await
+        .context("Failed to acquire device")
 }

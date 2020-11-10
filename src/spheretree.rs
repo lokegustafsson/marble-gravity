@@ -1,5 +1,6 @@
 use crate::Body;
 use cgmath::{prelude::*, Matrix4, Vector3};
+use std::iter::repeat;
 
 pub fn make_sphere_tree(bodies: &[Body], world_to_camera: Matrix4<f32>) -> Vec<Sphere> {
     let mut spheres: Vec<Option<Sphere>> = bodies
@@ -8,9 +9,10 @@ pub fn make_sphere_tree(bodies: &[Body], world_to_camera: Matrix4<f32>) -> Vec<S
         .map(Option::from)
         .collect();
 
+    let tot_nodes = 2 * spheres.len() - 1;
     spheres.reserve_exact(spheres.len() - 1);
     let mut num_spheres = spheres.len();
-    let mut tree: Vec<Sphere> = Vec::with_capacity(2 * spheres.len() - 1);
+    let mut tree: Vec<Sphere> = repeat(Sphere::placeholder()).take(tot_nodes).collect();
     let mut chain: Vec<usize> = Vec::new();
     while num_spheres > 1 {
         let current = loop {
@@ -45,8 +47,8 @@ pub fn make_sphere_tree(bodies: &[Body], world_to_camera: Matrix4<f32>) -> Vec<S
             // Join a pair of mutually closest neighbors
             let last = chain[chain.len() - 2];
             spheres.push(Some(Sphere::branch(current, last, &spheres)));
-            tree.push(spheres[current].take().unwrap());
-            tree.push(spheres[last].take().unwrap());
+            tree[current] = spheres[current].take().unwrap();
+            tree[last] = spheres[last].take().unwrap();
             num_spheres -= 1;
             chain.pop();
             chain.pop();
@@ -55,8 +57,7 @@ pub fn make_sphere_tree(bodies: &[Body], world_to_camera: Matrix4<f32>) -> Vec<S
             chain.push(nearest_neighbor);
         }
     }
-    tree.push(spheres.last().unwrap().unwrap()); // Push root
-    tree.reverse(); // Put root first
+    tree[tot_nodes - 1] = spheres.last().unwrap().unwrap(); // Push root
     tree
 }
 
@@ -100,6 +101,15 @@ impl Sphere {
             radius: joined_radius,
             left: a_index as i32,
             right: b_index as i32,
+            _padding: 0,
+        }
+    }
+    pub(self) fn placeholder() -> Self {
+        Self {
+            pos: Vector3::zero(),
+            radius: 0.0,
+            left: 0,
+            right: 0,
             _padding: 0,
         }
     }

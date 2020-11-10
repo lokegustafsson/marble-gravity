@@ -1,8 +1,12 @@
 #version 450
 
+// Note that the rust side includes 64 bit padding at the end which is implicit here
+// Buffer items need their size to be a multiple of 128 bits. This struct is 256 bits.
 struct body {
     vec3 pos;
     float radius;
+    int left;
+    int right;
 };
 
 // Fragment specific
@@ -18,9 +22,7 @@ layout(set=0, binding=1) uniform Uniforms {
 };
 
 
-// Ray tracing with parameters:
-// - Roughness
-// - Index of refraction relative to air
+// TODO: Actually traverse the bounding sphere tree
 void main() {
     vec2 frag_pos = gl_FragCoord.xy / window_size.y;
     vec2 mid_frag_pos = vec2(0.5 * window_size.x / window_size.y, 0.5);

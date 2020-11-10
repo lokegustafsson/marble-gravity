@@ -1,6 +1,7 @@
 mod camera;
 mod graphics;
 mod physics;
+mod spheretree;
 
 use anyhow::*;
 use async_std::task::block_on;
@@ -8,6 +9,7 @@ use camera::Camera;
 use graphics::Graphics;
 use physics::{Body, BODIES};
 use rayon::prelude::*;
+use spheretree::make_sphere_tree;
 use std::time::Instant;
 use winit::{
     dpi::PhysicalPosition,
@@ -78,7 +80,7 @@ fn main() -> Result<(), anyhow::Error> {
                 window.request_redraw();
             }
             Event::RedrawRequested(_window_id) => {
-                graphics.render(&bodies, camera.world_to_camera())
+                graphics.render(make_sphere_tree(&bodies, camera.world_to_camera()))
             }
             _ => {}
         }

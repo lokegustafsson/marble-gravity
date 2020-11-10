@@ -1,8 +1,7 @@
-use crate::physics::{Body, BODIES};
+use crate::{physics::BODIES, spheretree::Sphere};
 use anyhow::*;
-use cgmath::{Matrix4, Vector2, Vector3};
+use cgmath::Vector2;
 use log::info;
-use rayon::prelude::*;
 use std::mem;
 use wgpu::*;
 use winit::{dpi::PhysicalSize, window::Window};
@@ -23,25 +22,6 @@ impl Uniforms {
 }
 unsafe impl bytemuck::Pod for Uniforms {}
 unsafe impl bytemuck::Zeroable for Uniforms {}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug)]
-pub struct RawBody {
-    pos: Vector3<f32>, // In camera space
-    radius: f32,
-}
-impl RawBody {
-    fn new(body: &Body, world_to_camera: &Matrix4<f32>) -> RawBody {
-        let hom_pos = world_to_camera * body.pos().extend(1.0);
-        let w = hom_pos.w;
-        Self {
-            pos: hom_pos.truncate() / w,
-            radius: body.radius(),
-        }
-    }
-}
-unsafe impl bytemuck::Pod for RawBody {}
-unsafe impl bytemuck::Zeroable for RawBody {}
 
 // TODO Use push constants instead of uniforms
 pub struct Graphics {
@@ -70,7 +50,7 @@ impl Graphics {
 
         let body_buffer = device.create_buffer(&BufferDescriptor {
             label: Some("Body buffer"),
-            size: (BODIES * mem::size_of::<RawBody>() as u32) as u64,
+            size: ((2 * BODIES - 1) * mem::size_of::<Sphere>() as u32) as u64,
             usage: BufferUsage::STORAGE | BufferUsage::COPY_DST,
             // I dont quite understand what this means, but I think it is just a feature that I won't be using
             mapped_at_creation: false,
@@ -101,15 +81,11 @@ impl Graphics {
         self.uniforms_are_new = true;
         self.swap_chain = make_swap_chain(&self.device, &self.surface, new_size.into());
     }
-    pub fn render(&mut self, bodies: &[Body], world_to_camera: Matrix4<f32>) {
+    pub fn render(&mut self, bodies: Vec<Sphere>) {
         // Copy state to GPU
         {
-            let raw_bodies: Vec<RawBody> = bodies
-                .par_iter()
-                .map(|b| RawBody::new(b, &world_to_camera))
-                .collect();
             self.queue
-                .write_buffer(&self.body_buffer, 0, bytemuck::cast_slice(&raw_bodies));
+                .write_buffer(&self.body_buffer, 0, bytemuck::cast_slice(&bodies));
             if self.uniforms_are_new {
                 self.queue.write_buffer(
                     &self.uniforms_buffer,

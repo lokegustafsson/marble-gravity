@@ -65,6 +65,11 @@ fn main() -> Result<(), anyhow::Error> {
                         camera.mouse_input(pos.x, pos.y, size.width, size.height);
                     }
                 }
+                WindowEvent::Focused(true) => capture_mouse = begin_capture_mouse(&window).is_ok(),
+                WindowEvent::Focused(false) => {
+                    stop_capture_mouse(&window);
+                    capture_mouse = false;
+                }
                 _ => {}
             },
             Event::MainEventsCleared => {

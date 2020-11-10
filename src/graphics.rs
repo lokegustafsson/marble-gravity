@@ -1,6 +1,6 @@
 use crate::{physics::BODIES, spheretree::Sphere};
 use anyhow::*;
-use cgmath::Vector2;
+use cgmath::{prelude::*, Quaternion, Vector2, Vector3};
 use log::info;
 use std::mem;
 use wgpu::*;
@@ -11,12 +11,16 @@ const TEXTURE_FORMAT: TextureFormat = TextureFormat::Bgra8UnormSrgb;
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct Uniforms {
-    window_size: Vector2<f32>,
+    pub(self) source_direction: Vector3<f32>,
+    _padding: u32,
+    pub(self) window_size: Vector2<f32>,
 }
 impl Uniforms {
-    pub fn new((width, height): (u32, u32)) -> Self {
+    pub fn new() -> Self {
         Self {
-            window_size: Vector2::new(width as f32, height as f32),
+            source_direction: Vector3::zero(),
+            _padding: 0,
+            window_size: Vector2::zero(),
         }
     }
 }
@@ -46,7 +50,8 @@ impl Graphics {
 
         let size: (u32, u32) = window.inner_size().into();
         let swap_chain = make_swap_chain(&device, &surface, size);
-        let uniforms = Uniforms::new(size);
+        let mut uniforms = Uniforms::new();
+        uniforms.window_size = Vector2::from(size).cast().unwrap();
 
         let body_buffer = device.create_buffer(&BufferDescriptor {
             label: Some("Body buffer"),
@@ -77,15 +82,23 @@ impl Graphics {
         })
     }
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
-        self.uniforms = Uniforms::new(new_size.into());
+        let size: (f32, f32) = (new_size.width as f32, new_size.height as f32);
+        self.uniforms.window_size = Vector2::from(size);
         self.uniforms_are_new = true;
         self.swap_chain = make_swap_chain(&self.device, &self.surface, new_size.into());
     }
-    pub fn render(&mut self, bodies: Vec<Sphere>) {
+    pub fn render(&mut self, bodies: Vec<Sphere>, rotation: Quaternion<f32>) {
         // Copy state to GPU
         {
             self.queue
                 .write_buffer(&self.body_buffer, 0, bytemuck::cast_slice(&bodies));
+            let source_dir = rotation
+                .conjugate()
+                .rotate_vector(Vector3::new(0.0, -1.0, 0.0));
+            if source_dir != self.uniforms.source_direction {
+                self.uniforms_are_new = true;
+                self.uniforms.source_direction = source_dir;
+            }
             if self.uniforms_are_new {
                 self.queue.write_buffer(
                     &self.uniforms_buffer,

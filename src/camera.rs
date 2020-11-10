@@ -96,4 +96,7 @@ impl Camera {
         let rot = Matrix4::from(self.rotation.conjugate());
         rot * trans
     }
+    pub fn rotation(&self) -> Quaternion<f32> {
+        self.rotation
+    }
 }

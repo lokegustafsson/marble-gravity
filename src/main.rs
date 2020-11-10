@@ -79,9 +79,10 @@ fn main() -> Result<(), anyhow::Error> {
                 camera.update(dt);
                 window.request_redraw();
             }
-            Event::RedrawRequested(_window_id) => {
-                graphics.render(make_sphere_tree(&bodies, camera.world_to_camera()))
-            }
+            Event::RedrawRequested(_window_id) => graphics.render(
+                make_sphere_tree(&bodies, camera.world_to_camera()),
+                camera.rotation(),
+            ),
             _ => {}
         }
     });

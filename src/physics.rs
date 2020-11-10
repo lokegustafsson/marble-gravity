@@ -17,7 +17,7 @@ impl Body {
         Body {
             pos: [pos(), pos(), pos()].into(),
             vel: Vector3::zero(),
-            radius: 0.03 * rand::random::<f32>(),
+            radius: 0.03 * (0.8 * rand::random::<f32>() + 0.2),
         }
     }
     pub fn pos(&self) -> Vector3<f32> {

@@ -12,8 +12,9 @@ struct hit_report {
     vec3 pos;
     int hit_idx;
 };
+
+// Constants ===
 const int STACK_SIZE = 20;
-const int STACK_OVERFLOW = -2;
 const int NO_HIT = -1;
 const float EPSILON = 0.01;
 
@@ -22,59 +23,67 @@ const vec4 RED = vec4(1,0,0,1);
 const vec4 WHITE = vec4(1);
 
 const vec3 AMBIENT = vec3(0.01, 0.01, 0.01);
-const vec3 SOURCE = vec3(1);
+const vec3 SOURCE = vec3(1,1,0.8);
+const float SOURCE_EXP = 10000;
 
 const float SPECULAR_EXP = 16;
-const vec3 MARBLE_COLOR = vec3(0,0,1);
+const vec3 MARBLE_COLOR = vec3(0,0.3,1);
 
-// IO
+// Global variables ===
+bool stack_overflow = false;
+
+// IO ===
 in vec4 gl_FragCoord;
 layout(location=0) out vec4 f_color;
 
-// Buffers & Uniforms
+// Buffers & Uniforms ===
 layout(set=0, binding=0) readonly buffer Bodies {
     body bodies[];
 };
+// Rust side includes 32 bit padding between pos and hit_idx that is implicit here.
 layout(set=0, binding=1) uniform Uniforms {
     vec3 source_direction;
     float _padding;
     vec2 window_size;
 };
 
-// Forward function declarations
+// Forward function declarations ===
 float hit_time(const vec3, const vec3, const vec3, const float);
 hit_report cast_ray(const vec3, const vec3);
+vec3 primary_ray(const vec3);
 
 void main() {
     const vec2 frag_pos = gl_FragCoord.xy / window_size.y;
     const vec2 mid_frag_pos = vec2(0.5 * window_size.x / window_size.y, 0.5);
     const vec3 camera_ray = normalize(vec3(frag_pos - mid_frag_pos, 1));
-
-    hit_report primary = cast_ray(vec3(0), camera_ray);
-    if (primary.hit_idx == STACK_OVERFLOW) {
+    f_color = vec4(primary_ray(camera_ray), 1);
+    if (stack_overflow) {
         f_color = RED;
-        return;
-    } else if (primary.hit_idx == NO_HIT) {
-        f_color = BLACK;
-        return;
     }
+}
+
+vec3 primary_ray(const vec3 camera_ray) {
+    hit_report primary = cast_ray(vec3(0), camera_ray);
+    if (primary.hit_idx == NO_HIT) {
+        // Background
+        const float alignment = max(0, dot(camera_ray, source_direction));
+        return SOURCE * pow(min(1, 0.001 + alignment), SOURCE_EXP);
+    }
+    // Ambient
+    vec3 light = AMBIENT * MARBLE_COLOR;
+
     const vec3 primary_normal = primary.pos - bodies[primary.hit_idx].pos;
     const hit_report source = cast_ray(primary.pos + EPSILON * primary_normal, source_direction);
-    if (source.hit_idx == STACK_OVERFLOW) {
-        f_color = RED;
-        return;
-    }
-    vec3 light = AMBIENT * MARBLE_COLOR;
     if (source.hit_idx == NO_HIT) {
-        float alignment = dot(normalize(primary_normal), normalize(source_direction - camera_ray));
+        // Not in shadow
+        const float alignment = dot(normalize(primary_normal), normalize(source_direction - camera_ray));
         light += MARBLE_COLOR * SOURCE * alignment;
         light += SOURCE * pow(alignment, SPECULAR_EXP);
     }
-    f_color = vec4(light, 1);
+    return light;
 }
 
 hit_report cast_ray(const vec3 from, const vec3 ray) {
-    // Indices of spheres the ray eventually collides with, with first collision on top
     int stack[STACK_SIZE];
     int stack_ptr = -1;
 
@@ -102,19 +111,21 @@ hit_report cast_ray(const vec3 from, const vec3 ray) {
                 l_hit = r_hit;
                 r_hit = tmpf;
 
-                int tmp = left;
+                int tmpi = left;
                 left = right;
-                right = tmp;
+                right = tmpi;
             }
             if (r_hit > 0) {
                 if (stack_ptr + 1 == STACK_SIZE) {
-                    return hit_report(vec3(0), STACK_OVERFLOW);
+                    stack_overflow = true;
+                    return hit_report(vec3(0), NO_HIT);
                 }
                 stack[++stack_ptr] = right;
             }
             if (l_hit > 0) {
                 if (stack_ptr + 1 == STACK_SIZE) {
-                    return hit_report(vec3(0), STACK_OVERFLOW);
+                    stack_overflow = true;
+                    return hit_report(vec3(0), NO_HIT);
                 }
                 stack[++stack_ptr] = left;
             }

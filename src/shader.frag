@@ -9,18 +9,15 @@ struct body {
     int right;
 };
 struct hit_report {
-    vec3 pos;
-    int hit_idx;
+    vec3 normal;
+    int id;
 };
 
 // Constants ===
 const int STACK_SIZE = 20;
+const vec4 RED = vec4(1,0,0,1);
 const int NO_HIT = -1;
 const float EPSILON = 0.01;
-
-const vec4 BLACK = vec4(vec3(0),1);
-const vec4 RED = vec4(1,0,0,1);
-const vec4 WHITE = vec4(1);
 
 const vec3 AMBIENT = vec3(0.01, 0.01, 0.01);
 const vec3 SUN_COLOR = vec3(1,1,0.8);
@@ -29,6 +26,7 @@ const float SUN_CORONA = 1e-4;
 
 const float SPECULAR_EXP = 16;
 const vec3 MARBLE_COLOR = vec3(0,0.3,1);
+const float REFRACTIVE_INDEX = 1.1;
 
 // Global variables ===
 bool stack_overflow = false;
@@ -41,7 +39,7 @@ layout(location=0) out vec4 f_color;
 layout(set=0, binding=0) readonly buffer Bodies {
     body bodies[];
 };
-// Rust side includes 32 bit padding between pos and hit_idx that is implicit here.
+// Padding is apparently necessary
 layout(set=0, binding=1) uniform Uniforms {
     vec3 sun_direction;
     float _padding;
@@ -68,32 +66,41 @@ void main() {
 
 // Casts a ray with a single reflection and refraction
 vec3 double_ray(const vec3 from, const vec3 ray) {
-    hit_report primary = cast_ray(vec3(0), ray);
-    if (primary.hit_idx == NO_HIT) {
+    hit_report hit = cast_ray(vec3(0), ray);
+    if (hit.id == NO_HIT) {
         return background_light(ray);
     }
-    const vec3 hit_from_centre = primary.pos - bodies[primary.hit_idx].pos;
-    const vec3 hit_point = primary.pos + EPSILON * hit_from_centre;
-    const vec3 normal = normalize(hit_from_centre);
+    const vec3 normal = hit.normal;
+    const vec3 hit_centre = bodies[hit.id].pos;
+    const vec3 hit_from_centre = normal * bodies[hit.id].radius;
+    const vec3 hit_point = hit_centre + (1 + EPSILON) * hit_from_centre;
 
     vec3 light = primary_illumination(hit_point, normal, ray);
-    {
-        const vec3 normal_prime = normal * dot(-ray, normal);
-        const vec3 reflect_ray = 2 * normal_prime + ray;
-        light += simple_ray(hit_point, reflect_ray);
+    // Reflected
+    light += simple_ray(hit_point, reflect(ray, normal));
+
+    { // Refracted
+        const vec3 out_of_plane = cross(ray, normal);
+        const vec3 internal_ray = refract(ray, normal, 1/REFRACTIVE_INDEX);
+        const vec3 internal_normal = cross(out_of_plane, internal_ray);
+        const vec3 exit_pos = hit_centre + (1 + EPSILON) * reflect(-hit_from_centre, internal_normal);
+        const vec3 exit_ray = reflect(ray, internal_normal);
+        light += simple_ray(exit_pos, exit_ray);
     }
     return light;
 }
 
 // Casts a ray considering the sun, but ignores reflection and refraction
 vec3 simple_ray(const vec3 from, const vec3 ray) {
-    hit_report primary = cast_ray(from, ray);
-    if (primary.hit_idx == NO_HIT) {
+    hit_report hit = cast_ray(from, ray);
+    if (hit.id == NO_HIT) {
         return background_light(ray);
     }
-    const vec3 hit_from_centre = primary.pos - bodies[primary.hit_idx].pos;
-    const vec3 hit_point = primary.pos + EPSILON * hit_from_centre;
-    const vec3 normal = normalize(hit_from_centre);
+    const vec3 normal = hit.normal;
+    const vec3 hit_centre = bodies[hit.id].pos;
+    const vec3 hit_from_centre = normal * bodies[hit.id].radius;
+    const vec3 hit_point = hit_centre + (1 + EPSILON) * hit_from_centre;
+
     return primary_illumination(hit_point, normal, ray);
 }
 
@@ -109,7 +116,7 @@ vec3 background_light(const vec3 ray) {
 vec3 primary_illumination(const vec3 location, const vec3 normal, const vec3 ray) {
     // Ambient
     vec3 light = AMBIENT * MARBLE_COLOR;
-    if (cast_ray(location, sun_direction).hit_idx == NO_HIT) {
+    if (cast_ray(location, sun_direction).id == NO_HIT) {
         const float alignment = dot(normal, normalize(sun_direction - ray));
         light += MARBLE_COLOR * SUN_COLOR * alignment;
         light += SUN_COLOR * pow(alignment, SPECULAR_EXP);
@@ -166,7 +173,8 @@ hit_report cast_ray(const vec3 from, const vec3 ray) {
             }
         }
     }
-    return hit_report(from + ray * first_hit_time, first_hit_target);
+    const vec3 hit_pos = from + ray * first_hit_time;
+    return hit_report(normalize(hit_pos - bodies[first_hit_target].pos), first_hit_target);
 }
 
 // When will the ray from [from] along [ray] intersect body [body]?

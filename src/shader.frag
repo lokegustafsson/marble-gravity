@@ -42,8 +42,8 @@ layout(set=0, binding=1) uniform Uniforms {
 };
 
 // Forward function declarations
-float hit_time(vec3, vec3, vec3, float);
-hit_report cast_ray(vec3, vec3);
+float hit_time(const vec3, const vec3, const vec3, const float);
+hit_report cast_ray(const vec3, const vec3);
 
 void main() {
     const vec2 frag_pos = gl_FragCoord.xy / window_size.y;
@@ -73,21 +73,21 @@ void main() {
     f_color = vec4(light, 1);
 }
 
-hit_report cast_ray(vec3 from, vec3 ray) {
+hit_report cast_ray(const vec3 from, const vec3 ray) {
     // Indices of spheres the ray eventually collides with, with first collision on top
     int stack[STACK_SIZE];
     int stack_ptr = -1;
 
-    int root = bodies.length() - 1;
+    const int root = bodies.length() - 1;
     if (hit_time(from, ray, bodies[root].pos, bodies[root].radius) > 0) {
         stack[++stack_ptr] = root;
     }
     float first_hit_time = 1e9;
     int first_hit_target = NO_HIT;
     while (stack_ptr >= 0) {
-        int hit = stack[stack_ptr--];
+        const int hit = stack[stack_ptr--];
         if (bodies[hit].left == -1) {
-            float time = hit_time(from, ray, bodies[hit].pos, bodies[hit].radius);
+            const float time = hit_time(from, ray, bodies[hit].pos, bodies[hit].radius);
             if (time < first_hit_time) {
                 first_hit_time = time;
                 first_hit_target = hit;
@@ -123,7 +123,7 @@ hit_report cast_ray(vec3 from, vec3 ray) {
     return hit_report(from + ray * first_hit_time, first_hit_target);
 }
 
-float hit_time(vec3 from, vec3 ray, vec3 body_pos, float r) {
+float hit_time(const vec3 from, const vec3 ray, const vec3 body_pos, const float r) {
     /* Solve system for t:
          (xyz - body_pos)^2 == r^2
          xyz = from + ray * t

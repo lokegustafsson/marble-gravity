@@ -8,10 +8,18 @@ struct body {
     int left;
     int right;
 };
+// Internal structs
 struct hit_report {
     vec3 normal;
     int id;
 };
+struct rays {
+    vec3 reflected_pos;
+    vec3 reflected_ray;
+    vec3 refracted_pos;
+    vec3 refracted_ray;
+};
+
 
 // Constants ===
 const int STACK_SIZE = 20;
@@ -19,12 +27,12 @@ const vec4 RED = vec4(1,0,0,1);
 const int NO_HIT = -1;
 const float EPSILON = 0.01;
 
-const vec3 AMBIENT = vec3(0.01, 0.01, 0.01);
+const vec3 AMBIENT = vec3(0.1, 0.1, 0.1);
 const vec3 SUN_COLOR = vec3(1,1,0.8);
-const float SUN_SIZE = 1e-3;
-const float SUN_CORONA = 1e-4;
+const float SUN_SIZE = 1e-2;
+const float SUN_CORONA = 1e-3;
 
-const float SPECULAR_EXP = 16;
+const float OPACITY = 0.5;
 const vec3 MARBLE_COLOR = vec3(0,0.3,1);
 const float REFRACTIVE_INDEX = 1.1;
 
@@ -47,81 +55,92 @@ layout(set=0, binding=1) uniform Uniforms {
 };
 
 // Forward function declarations ===
-float hit_time(const vec3, const vec3, const uint);
-hit_report cast_ray(const vec3, const vec3);
-vec3 simple_ray(const vec3, const vec3);
+vec3 triple_ray(const vec3, const vec3);
 vec3 double_ray(const vec3, const vec3);
+rays ray_tracing_data(const vec3, const vec3, const uint);
+vec3 simple_ray(const vec3, const vec3);
 vec3 background_light(const vec3);
-vec3 primary_illumination(const vec3, const vec3, const vec3);
+hit_report cast_ray(const vec3, const vec3);
+float hit_time(const vec3, const vec3, const uint);
 
 void main() {
     const vec2 frag_pos = gl_FragCoord.xy / window_size.y;
     const vec2 mid_frag_pos = vec2(0.5 * window_size.x / window_size.y, 0.5);
     const vec3 camera_ray = normalize(vec3(frag_pos - mid_frag_pos, 1));
-    f_color = vec4(double_ray(vec3(0), camera_ray), 1);
+    f_color = vec4(triple_ray(vec3(0), camera_ray), 1);
     if (stack_overflow) {
         f_color = RED;
     }
 }
 
-// Casts a ray with a single reflection and refraction
-vec3 double_ray(const vec3 from, const vec3 ray) {
-    hit_report hit = cast_ray(vec3(0), ray);
+// Casts a ray with a two reflections and refractions
+vec3 triple_ray(const vec3 from, const vec3 ray) {
+    hit_report hit = cast_ray(from, ray);
     if (hit.id == NO_HIT) {
         return background_light(ray);
     }
-    const vec3 normal = hit.normal;
-    const vec3 hit_centre = bodies[hit.id].pos;
-    const vec3 hit_from_centre = normal * bodies[hit.id].radius;
-    const vec3 hit_point = hit_centre + (1 + EPSILON) * hit_from_centre;
+    rays next = ray_tracing_data(hit.normal, ray, hit.id);
 
-    vec3 light = primary_illumination(hit_point, normal, ray);
-    // Reflected
-    light += simple_ray(hit_point, reflect(ray, normal));
-
-    { // Refracted
-        const vec3 out_of_plane = cross(ray, normal);
-        const vec3 internal_ray = refract(ray, normal, 1/REFRACTIVE_INDEX);
-        const vec3 internal_normal = cross(out_of_plane, internal_ray);
-        const vec3 exit_pos = hit_centre + (1 + EPSILON) * reflect(-hit_from_centre, internal_normal);
-        const vec3 exit_ray = reflect(ray, internal_normal);
-        light += simple_ray(exit_pos, exit_ray);
-    }
+    vec3 light = AMBIENT * MARBLE_COLOR; // Ambient
+    light += OPACITY * double_ray(next.reflected_pos, next.reflected_ray); // Reflected
+    light += (1 - OPACITY) * double_ray(next.refracted_pos, next.refracted_ray); // Refracted
     return light;
 }
 
-// Casts a ray considering the sun, but ignores reflection and refraction
+// Casts a ray with a single reflection and refraction
+vec3 double_ray(const vec3 from, const vec3 ray) {
+    hit_report hit = cast_ray(from, ray);
+    if (hit.id == NO_HIT) {
+        return background_light(ray);
+    }
+    rays next = ray_tracing_data(hit.normal, ray, hit.id);
+
+    vec3 light = AMBIENT * MARBLE_COLOR; // Ambient
+    light += OPACITY * simple_ray(next.reflected_pos, next.reflected_ray); // Reflected
+    light += (1 - OPACITY) * simple_ray(next.refracted_pos, next.refracted_ray); // Refracted
+    return light;
+}
+
+// Computes values necessary for casting reflected and refracted rays
+rays ray_tracing_data(const vec3 normal, const vec3 ray, const uint hit_id) {
+    const vec3 hit_centre = bodies[hit_id].pos;
+    const vec3 hit_from_centre = normal * bodies[hit_id].radius;
+    const vec3 entry_pos = hit_centre + (1 + EPSILON) * hit_from_centre;
+
+    const vec3 out_of_plane = cross(ray, normal);
+    const vec3 internal_ray = refract(ray, normal, 1/REFRACTIVE_INDEX);
+    const vec3 internal_normal = normalize(cross(out_of_plane, internal_ray));
+    const vec3 exit_pos = hit_centre + (1 + EPSILON) * reflect(-hit_from_centre, internal_normal);
+    const vec3 exit_ray = normalize(reflect(ray, internal_normal));
+
+    return rays(entry_pos, reflect(ray, normal), exit_pos, exit_ray);
+}
+
+// Casts a ray using Blinn-Phong illumination
 vec3 simple_ray(const vec3 from, const vec3 ray) {
     hit_report hit = cast_ray(from, ray);
     if (hit.id == NO_HIT) {
         return background_light(ray);
     }
     const vec3 normal = hit.normal;
-    const vec3 hit_centre = bodies[hit.id].pos;
-    const vec3 hit_from_centre = normal * bodies[hit.id].radius;
-    const vec3 hit_point = hit_centre + (1 + EPSILON) * hit_from_centre;
+    const vec3 hit_point = bodies[hit.id].pos + (1 + EPSILON) * bodies[hit.id].radius * normal;
 
-    return primary_illumination(hit_point, normal, ray);
+    // Ambient
+    vec3 light = AMBIENT * MARBLE_COLOR;
+    if (cast_ray(hit_point, sun_direction).id == NO_HIT) {
+        const float alignment = dot(normal, normalize(sun_direction - ray));
+        // Diffuse
+        light += MARBLE_COLOR * SUN_COLOR * OPACITY * alignment;
+        // Specular
+        light += SUN_COLOR * (1 - OPACITY) * pow(alignment, inversesqrt(SUN_CORONA));
+    }
+    return light;
 }
 
 // What color is the background in the [ray] direction?
 vec3 background_light(const vec3 ray) {
     const float alignment = max(0, dot(ray, sun_direction));
     return SUN_COLOR * pow(min(1, SUN_SIZE + alignment), 1/SUN_CORONA);
-}
-
-// When a ray travelling along [ray] hits a surface with normal [normal] in
-// [location], what color given by the global illumination according to
-// Blinn-Phong?
-vec3 primary_illumination(const vec3 location, const vec3 normal, const vec3 ray) {
-    // Ambient
-    vec3 light = AMBIENT * MARBLE_COLOR;
-    if (cast_ray(location, sun_direction).id == NO_HIT) {
-        const float alignment = dot(normal, normalize(sun_direction - ray));
-        light += MARBLE_COLOR * SUN_COLOR * alignment;
-        light += SUN_COLOR * pow(alignment, SPECULAR_EXP);
-    }
-    return light;
 }
 
 // Cast a ray by traversing the body tree. Will set [stack_overflow] on overflow

@@ -2,7 +2,7 @@ use cgmath::{prelude::*, Vector3};
 
 pub const BODIES: u32 = 100;
 const GRAVITY_CONSTANT: f32 = 5.0;
-const RESTITUTION: f32 = 0.9;
+const RESTITUTION: f32 = 0.5;
 
 pub struct Body {
     pos: Vector3<f32>,

@@ -1,5 +1,5 @@
 use crate::Body;
-use cgmath::{prelude::*, Matrix4, Vector3};
+use cgmath::{prelude::*, Matrix4, Vector3, Vector4};
 use std::iter::repeat;
 
 pub fn make_sphere_tree(bodies: &[Body], world_to_camera: Matrix4<f32>) -> Vec<Sphere> {
@@ -72,6 +72,7 @@ fn measure(a: &Sphere, b: &Sphere) -> f32 {
 pub struct Sphere {
     pos: Vector3<f32>,
     radius: f32,
+    color: Vector4<f32>,
     left: i32,
     right: i32,
     _padding: u64, // Bump to 256 bits to satisfy multiple of 128 bit criteria
@@ -83,6 +84,7 @@ impl Sphere {
         Self {
             pos: hom_pos.truncate() / w,
             radius: body.radius(),
+            color: body.color(),
             left: -1,
             right: -1,
             _padding: 0,
@@ -99,6 +101,7 @@ impl Sphere {
         Self {
             pos: joined_midpoint,
             radius: joined_radius,
+            color: Vector4::zero(),
             left: a_index as i32,
             right: b_index as i32,
             _padding: 0,
@@ -108,6 +111,7 @@ impl Sphere {
         Self {
             pos: Vector3::zero(),
             radius: 0.0,
+            color: Vector4::zero(),
             left: 0,
             right: 0,
             _padding: 0,

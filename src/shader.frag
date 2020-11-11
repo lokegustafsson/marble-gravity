@@ -1,10 +1,11 @@
 #version 450
 
 // Note that the rust side includes 64 bit padding at the end which is implicit here
-// Buffer items need their size to be a multiple of 128 bits. This struct is 256 bits.
+// Buffer items need their size to be a multiple of 128 bits. This struct is 384 bits.
 struct body {
     vec3 pos;
     float radius;
+    vec4 color;
     int left;
     int right;
 };
@@ -27,13 +28,10 @@ const vec4 RED = vec4(1,0,0,1);
 const int NO_HIT = -1;
 const float EPSILON = 0.01;
 
-const vec3 AMBIENT = vec3(0.1, 0.1, 0.1);
-const vec3 SUN_COLOR = vec3(1,1,0.8);
+const vec3 AMBIENT = vec3(0.08); // Uniform?
+const vec3 SUN_COLOR = vec3(1); // Uniform?
 const float SUN_SIZE = 1e-2;
 const float SUN_CORONA = 1e-3;
-
-const float OPACITY = 0.5;
-const vec3 MARBLE_COLOR = vec3(0,0.3,1);
 const float REFRACTIVE_INDEX = 1.1;
 
 // Global variables ===
@@ -75,29 +73,31 @@ void main() {
 
 // Casts a ray with a two reflections and refractions
 vec3 triple_ray(const vec3 from, const vec3 ray) {
-    hit_report hit = cast_ray(from, ray);
+    const hit_report hit = cast_ray(from, ray);
     if (hit.id == NO_HIT) {
         return background_light(ray);
     }
-    rays next = ray_tracing_data(hit.normal, ray, hit.id);
+    const rays next = ray_tracing_data(hit.normal, ray, hit.id);
+    const float opacity = bodies[hit.id].color.w;
 
-    vec3 light = AMBIENT * MARBLE_COLOR; // Ambient
-    light += OPACITY * double_ray(next.reflected_pos, next.reflected_ray); // Reflected
-    light += (1 - OPACITY) * double_ray(next.refracted_pos, next.refracted_ray); // Refracted
+    vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
+    light += opacity * double_ray(next.reflected_pos, next.reflected_ray); // Reflected
+    light += (1 - opacity) * double_ray(next.refracted_pos, next.refracted_ray); // Refracted
     return light;
 }
 
 // Casts a ray with a single reflection and refraction
 vec3 double_ray(const vec3 from, const vec3 ray) {
-    hit_report hit = cast_ray(from, ray);
+    const hit_report hit = cast_ray(from, ray);
     if (hit.id == NO_HIT) {
         return background_light(ray);
     }
-    rays next = ray_tracing_data(hit.normal, ray, hit.id);
+    const rays next = ray_tracing_data(hit.normal, ray, hit.id);
+    const float opacity = bodies[hit.id].color.w;
 
-    vec3 light = AMBIENT * MARBLE_COLOR; // Ambient
-    light += OPACITY * simple_ray(next.reflected_pos, next.reflected_ray); // Reflected
-    light += (1 - OPACITY) * simple_ray(next.refracted_pos, next.refracted_ray); // Refracted
+    vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
+    light += opacity * simple_ray(next.reflected_pos, next.reflected_ray); // Reflected
+    light += (1 - opacity) * simple_ray(next.refracted_pos, next.refracted_ray); // Refracted
     return light;
 }
 
@@ -124,15 +124,17 @@ vec3 simple_ray(const vec3 from, const vec3 ray) {
     }
     const vec3 normal = hit.normal;
     const vec3 hit_point = bodies[hit.id].pos + (1 + EPSILON) * bodies[hit.id].radius * normal;
+    const vec3 color = bodies[hit.id].color.xyz;
+    const float opacity = bodies[hit.id].color.w;
 
     // Ambient
-    vec3 light = AMBIENT * MARBLE_COLOR;
+    vec3 light = AMBIENT * opacity * color;
     if (cast_ray(hit_point, sun_direction).id == NO_HIT) {
         const float alignment = dot(normal, normalize(sun_direction - ray));
         // Diffuse
-        light += MARBLE_COLOR * SUN_COLOR * OPACITY * alignment;
+        light += color * SUN_COLOR * opacity * alignment;
         // Specular
-        light += SUN_COLOR * (1 - OPACITY) * pow(alignment, inversesqrt(SUN_CORONA));
+        light += SUN_COLOR * (1 - opacity) * pow(alignment, inversesqrt(SUN_CORONA));
     }
     return light;
 }

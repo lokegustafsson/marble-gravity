@@ -1,4 +1,4 @@
-use cgmath::{prelude::*, Vector3};
+use cgmath::{prelude::*, Vector3, Vector4};
 
 pub const BODIES: u32 = 100;
 const GRAVITY_CONSTANT: f32 = 5.0;
@@ -8,16 +8,21 @@ pub struct Body {
     pos: Vector3<f32>,
     vel: Vector3<f32>,
     radius: f32,
+    color: Vector4<f32>,
 }
 impl Body {
     pub fn initial() -> Body {
         fn pos() -> f32 {
             2.0 * (rand::random::<f32>() - 0.5)
         }
+        fn c() -> f32 {
+            rand::random::<f32>()
+        }
         Body {
             pos: [pos(), pos(), pos()].into(),
             vel: Vector3::zero(),
             radius: 0.03 * (0.8 * rand::random::<f32>() + 0.2),
+            color: [c(), c(), c(), c()].into(),
         }
     }
     pub fn pos(&self) -> Vector3<f32> {
@@ -25,6 +30,9 @@ impl Body {
     }
     pub fn radius(&self) -> f32 {
         self.radius
+    }
+    pub fn color(&self) -> Vector4<f32> {
+        self.color
     }
     pub fn update(&self, others: &[Body], dt: f32) -> Body {
         let mut accel = Vector3::zero();
@@ -61,6 +69,7 @@ impl Body {
             pos: self.pos + (self.vel + post_collision_vel) / 2.0 * dt + accel * dt * dt / 2.0,
             vel: post_collision_vel + accel * dt,
             radius: self.radius,
+            color: self.color,
         }
     }
 }

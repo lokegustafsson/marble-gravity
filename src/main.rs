@@ -13,10 +13,12 @@ use spheretree::make_sphere_tree;
 use std::time::Instant;
 use winit::{
     dpi::PhysicalPosition,
-    event::{Event, ModifiersState, WindowEvent},
+    event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+
+const UPDATES_PER_TICK: usize = 100;
 
 fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
@@ -32,6 +34,7 @@ fn main() -> Result<(), anyhow::Error> {
     let mut bodies: Vec<Body> = (0..BODIES).into_iter().map(|_| Body::initial()).collect();
     let mut last_update = Instant::now();
     let mut capture_mouse = false;
+    let mut slow_mode = false;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -43,23 +46,16 @@ fn main() -> Result<(), anyhow::Error> {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                 WindowEvent::Resized(new_size) => graphics.resize(new_size),
                 WindowEvent::ModifiersChanged(mods) => {
-                    if mods | ModifiersState::SHIFT == ModifiersState::SHIFT {
-                        capture_mouse = begin_capture_mouse(&window).is_ok();
-                    } else {
+                    if mods.alt() || mods.logo() {
                         stop_capture_mouse(&window);
                         capture_mouse = false;
+                    } else {
+                        capture_mouse = begin_capture_mouse(&window).is_ok();
                     }
+                    slow_mode = mods.ctrl();
                 }
-                WindowEvent::KeyboardInput {
-                    device_id: _,
-                    input: key,
-                    is_synthetic: _,
-                } => camera.key_input(key),
-                WindowEvent::CursorMoved {
-                    device_id: _,
-                    position: pos,
-                    modifiers: _,
-                } => {
+                WindowEvent::KeyboardInput { input: key, .. } => camera.key_input(key, slow_mode),
+                WindowEvent::CursorMoved { position: pos, .. } => {
                     if capture_mouse && continue_capture_mouse(&window) {
                         let size = window.inner_size();
                         camera.mouse_input(pos.x, pos.y, size.width, size.height);
@@ -76,11 +72,12 @@ fn main() -> Result<(), anyhow::Error> {
                 let now = Instant::now();
                 let dt = now.duration_since(last_update).as_secs_f32();
                 last_update = now;
-
-                bodies = bodies
-                    .par_iter()
-                    .map(|body| body.update(&bodies, dt))
-                    .collect();
+                for _ in 0..UPDATES_PER_TICK {
+                    bodies = bodies
+                        .par_iter()
+                        .map(|body| body.update(&bodies, dt / (UPDATES_PER_TICK as f32)))
+                        .collect();
+                }
                 camera.update(dt);
                 window.request_redraw();
             }

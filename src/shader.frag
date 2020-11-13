@@ -139,10 +139,24 @@ vec3 simple_ray(const vec3 from, const vec3 ray) {
     return light;
 }
 
+float softmax(float a, float b, float c) {
+    float M = max(max(exp(a), exp(b)), exp(c));
+    return (M - 1) / (exp(a) + exp(b) + exp(c));
+}
+float rings(float x) {
+    x = 3.141592 / 4 * (x - 1);
+    float a = pow(abs(sin(6*x)), 40);
+    float b = pow(abs(sin(17*x)), 40);
+    float c = pow(abs(sin(20*x)), 40);
+    return softmax(a, b, c);
+}
+
 // What color is the background in the [ray] direction?
 vec3 background_light(const vec3 ray) {
     const float alignment = max(0, dot(ray, sun_direction));
-    return SUN_COLOR * pow(min(1, SUN_SIZE + alignment), 1/SUN_CORONA);
+    vec3 sun = SUN_COLOR * min(1, pow(SUN_SIZE + alignment, 1/SUN_CORONA));
+    float rings = 0.04 * rings(dot(ray, sun_direction));
+    return sun + vec3(rings);
 }
 
 // Cast a ray by traversing the body tree. Will set [stack_overflow] on overflow

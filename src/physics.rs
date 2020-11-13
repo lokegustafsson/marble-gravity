@@ -39,15 +39,19 @@ impl Body {
         let mut post_collision_vel = self.vel;
         for body in others {
             let rel_pos_other = body.pos - self.pos;
+            let rel_pos_norm = rel_pos_other.normalize();
+            let vel_towards_other = self.vel.dot(rel_pos_norm);
+            let vel_towards_self = body.vel.dot(-rel_pos_norm);
+            let rel_vel = vel_towards_other + vel_towards_self;
+
             if body.pos == self.pos {
                 // Same body
                 continue;
-            } else if rel_pos_other.magnitude2() < (self.radius + body.radius).powi(2) {
+            } else if rel_pos_other.magnitude2()
+                < (self.radius + body.radius + (rel_vel * dt).max(0.0)).powi(2)
+            {
                 // Almost-elastic collision
-                let rel_pos_norm = rel_pos_other.normalize();
-                let vel_towards_other = self.vel.dot(rel_pos_norm);
-                let vel_towards_self = body.vel.dot(-rel_pos_norm);
-                if vel_towards_other + vel_towards_self < 0.0 {
+                if rel_vel < 0.0 {
                     // Already separating from each other
                     continue;
                 }

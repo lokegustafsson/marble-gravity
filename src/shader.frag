@@ -53,6 +53,7 @@ layout(set=0, binding=1) uniform Uniforms {
 };
 
 // Forward function declarations ===
+vec3 quad_ray(const vec3, const vec3);
 vec3 triple_ray(const vec3, const vec3);
 vec3 double_ray(const vec3, const vec3);
 rays ray_tracing_data(const vec3, const vec3, const uint);
@@ -71,7 +72,22 @@ void main() {
     }
 }
 
-// Casts a ray with a two reflections and refractions
+// Casts a ray with a triple reflections and refractions
+vec3 quad_ray(const vec3 from, const vec3 ray) {
+    const hit_report hit = cast_ray(from, ray);
+    if (hit.id == NO_HIT) {
+        return background_light(ray);
+    }
+    const rays next = ray_tracing_data(hit.normal, ray, hit.id);
+    const float opacity = bodies[hit.id].color.w;
+
+    vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
+    light += opacity * triple_ray(next.reflected_pos, next.reflected_ray); // Reflected
+    light += (1 - opacity) * triple_ray(next.refracted_pos, next.refracted_ray); // Refracted
+    return light;
+}
+
+// Casts a ray with a double reflections and refractions
 vec3 triple_ray(const vec3 from, const vec3 ray) {
     const hit_report hit = cast_ray(from, ray);
     if (hit.id == NO_HIT) {

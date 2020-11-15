@@ -20,7 +20,6 @@ use winit::{
 
 const MAX_BEHIND: Duration = Duration::from_secs(1);
 
-
 fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
     let event_loop = EventLoop::new();
@@ -74,10 +73,7 @@ fn main() -> Result<(), anyhow::Error> {
                 let mut behind = time_enter.checked_duration_since(simulation_timestamp);
 
                 while behind > Some(PHYSICS_DELTA_TIME) {
-                    bodies = bodies
-                        .par_iter()
-                        .map(|body| body.update(&bodies))
-                        .collect();
+                    bodies = bodies.par_iter().map(|body| body.update(&bodies)).collect();
                     camera.update(PHYSICS_DELTA_TIME.as_secs_f32());
 
                     simulation_timestamp += PHYSICS_DELTA_TIME;

@@ -7,10 +7,10 @@ use anyhow::*;
 use async_std::task::block_on;
 use camera::Camera;
 use graphics::Graphics;
-use physics::{Body, BODIES};
+use physics::{Body, BODIES, PHYSICS_DELTA_TIME};
 use rayon::prelude::*;
 use spheretree::make_sphere_tree;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use winit::{
     dpi::PhysicalPosition,
     event::{Event, WindowEvent},
@@ -18,7 +18,8 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-const UPDATES_PER_TICK: usize = 100;
+const MAX_BEHIND: Duration = Duration::from_secs(1);
+
 
 fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
@@ -32,7 +33,7 @@ fn main() -> Result<(), anyhow::Error> {
     let mut graphics = block_on(Graphics::initialize(&window))?;
     let mut camera = Camera::new();
     let mut bodies: Vec<Body> = (0..BODIES).into_iter().map(|_| Body::initial()).collect();
-    let mut last_update = Instant::now();
+    let mut simulation_timestamp = Instant::now();
     let mut capture_mouse = false;
     let mut slow_mode = false;
 
@@ -69,16 +70,25 @@ fn main() -> Result<(), anyhow::Error> {
                 _ => {}
             },
             Event::MainEventsCleared => {
-                let now = Instant::now();
-                let dt = now.duration_since(last_update).as_secs_f32();
-                last_update = now;
-                for _ in 0..UPDATES_PER_TICK {
+                let time_enter = Instant::now();
+                let mut behind = time_enter.checked_duration_since(simulation_timestamp);
+
+                while behind > Some(PHYSICS_DELTA_TIME) {
                     bodies = bodies
                         .par_iter()
-                        .map(|body| body.update(&bodies, dt / (UPDATES_PER_TICK as f32)))
+                        .map(|body| body.update(&bodies))
                         .collect();
+                    camera.update(PHYSICS_DELTA_TIME.as_secs_f32());
+
+                    simulation_timestamp += PHYSICS_DELTA_TIME;
+                    let new_behind = Instant::now().checked_duration_since(simulation_timestamp);
+                    if new_behind > Some(MAX_BEHIND) && new_behind > behind {
+                        println!("Physics computation too slow. Exiting...");
+                        *control_flow = ControlFlow::Exit;
+                        return;
+                    }
+                    behind = new_behind;
                 }
-                camera.update(dt);
                 window.request_redraw();
             }
             Event::RedrawRequested(_window_id) => graphics.render(

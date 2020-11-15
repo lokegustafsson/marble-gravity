@@ -1,5 +1,7 @@
 use cgmath::{prelude::*, Vector3, Vector4};
+use std::time::Duration;
 
+pub const PHYSICS_DELTA_TIME: Duration = Duration::from_millis(1);
 pub const BODIES: u32 = 100;
 const GRAVITY_CONSTANT: f32 = 5.0;
 const GAP: f32 = 0.0001;
@@ -36,7 +38,8 @@ impl Body {
     pub fn color(&self) -> Vector4<f32> {
         self.color
     }
-    pub fn update(&self, others: &[Body], dt: f32) -> Body {
+    pub fn update(&self, others: &[Body]) -> Body {
+        let dt = PHYSICS_DELTA_TIME.as_secs_f32();
         let mut accel = Vector3::zero();
         for body in others {
             if body.pos == self.pos {

@@ -1,93 +1,102 @@
-use anyhow::*;
 use glob::glob;
-use shaderc::{CompileOptions, Compiler, OptimizationLevel, ShaderKind};
-use std::{
-    collections::HashMap,
-    env::{self, set_current_dir},
-    fs,
-    path::PathBuf,
+use naga::{
+    valid::{Capabilities, ValidationFlags, Validator},
+    ShaderStage,
 };
+use std::{collections::HashMap, env, fs, path::PathBuf};
 
-fn main() -> Result<()> {
+fn main() {
     let root_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let src_dir = &root_dir.clone().join("src/");
-    let spirv_dir = &root_dir.join("target/");
+    let out_dir = &root_dir.join("target/");
 
     // Find already compiled
-    set_current_dir(spirv_dir)?;
+    env::set_current_dir(out_dir).unwrap();
     let mut compiled = CompiledShaders::load();
 
     // Collect all shaders recursively within /src/ without prefix
-    set_current_dir(src_dir)?;
-    let shaders = vec![glob("**/*.vert")?, glob("**/*.frag")?, glob("**/*.comp")?]
-        .into_iter()
-        .flatten()
-        .map(|glob_result| ShaderData::load(glob_result?))
-        .collect::<Result<Vec<_>>>()?
-        .into_iter()
-        .filter(|shader| compiled.has_new_checksum(shader))
-        .collect::<Vec<ShaderData>>();
+    env::set_current_dir(src_dir).unwrap();
+    let shaders = vec![
+        glob("**/*.vert").unwrap(),
+        glob("**/*.frag").unwrap(),
+        glob("**/*.comp").unwrap(),
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(|glob_result| {
+        let shader = ShaderData::load(glob_result.unwrap());
+        match compiled.has_new_checksum(&shader) {
+            true => Some(shader),
+            false => None,
+        }
+    })
+    .collect::<Vec<ShaderData>>();
 
     // This can't be parallelized. The [shaderc::Compiler] is not thread safe.
-    set_current_dir(spirv_dir)?;
-    let mut compiler = Compiler::new().context("Unable to create shader compiler")?;
-    let mut compile_options =
-        CompileOptions::new().context("Unable to create shader compile options")?;
-    compile_options.set_optimization_level(OptimizationLevel::Performance);
+    env::set_current_dir(out_dir).unwrap();
+    let mut parser = naga::front::glsl::Parser::default();
+    let mut validator = Validator::new(ValidationFlags::all(), Capabilities::empty());
 
     for shader in shaders {
         let name = shader.path.to_str().unwrap();
         println!("cargo:warning=Compiling shader {}", name);
 
-        let compiled = compiler.compile_into_spirv(
-            &shader.source,
-            shader.kind,
-            &name,
-            "main",
-            Some(&compile_options),
-        )?;
+        let module = parser
+            .parse(
+                &naga::front::glsl::Options {
+                    stage: shader.kind,
+                    defines: naga::FastHashMap::default(),
+                },
+                &shader.source,
+            )
+            .unwrap();
+        let compiled = naga::back::wgsl::write_string(
+            &module,
+            &validator.validate(&module).unwrap(),
+            naga::back::wgsl::WriterFlags::empty(),
+        )
+        .unwrap();
         let extension = match shader.kind {
-            ShaderKind::Vertex => "vert",
-            ShaderKind::Fragment => "frag",
-            ShaderKind::Compute => "comp",
-            _ => panic!("Shader {:?} unsupported"),
+            ShaderStage::Vertex => "vert",
+            ShaderStage::Fragment => "frag",
+            ShaderStage::Compute => "comp",
         };
         fs::write(
-            shader.path.with_extension(format!("{}.spv", extension)),
-            compiled.as_binary_u8(),
-        )?;
+            shader.path.with_extension(format!("{}.wgsl", extension)),
+            compiled.as_bytes(),
+        )
+        .unwrap();
     }
 
     // Remember compiled
     compiled.store();
-    Ok(())
 }
 
 struct ShaderData {
     source: String,
     path: PathBuf,
-    kind: ShaderKind,
+    kind: ShaderStage,
 }
 
 impl ShaderData {
-    pub fn load(path: PathBuf) -> Result<Self> {
+    pub fn load(path: PathBuf) -> Self {
         assert!(path.is_relative());
         assert!(path.is_file());
 
         let extension = path
             .extension()
-            .context("File has no extension")?
+            .expect("File has no extension")
             .to_str()
-            .context("Extension cannot be converted to &str")?;
+            .expect("Extension cannot be converted to &str");
         let kind = match extension {
-            "vert" => ShaderKind::Vertex,
-            "frag" => ShaderKind::Fragment,
-            "comp" => ShaderKind::Compute,
-            _ => bail!("Unsupported shader: {}", path.display()),
+            "vert" => ShaderStage::Vertex,
+            "frag" => ShaderStage::Fragment,
+            "comp" => ShaderStage::Compute,
+            _ => panic!("Unsupported shader: {}", path.display()),
         };
 
-        let source = fs::read_to_string(path.clone())?;
-        Ok(Self { source, path, kind })
+        let source = fs::read_to_string(path.clone()).unwrap();
+        Self { source, path, kind }
     }
 }
 
@@ -129,7 +138,7 @@ impl CompiledShaders {
         fs::write("shader_checksums.txt", &entries.join("\n")).unwrap();
     }
     pub fn has_new_checksum(&mut self, shader: &ShaderData) -> bool {
-        let digest = format!("{:?}", md5::compute(&shader.source));
+        let digest = format!("{:?}", blake3::hash(shader.source.as_bytes()));
         if let Some(old_digest) = self.0.get(&shader.path) {
             if *old_digest == digest {
                 return false;

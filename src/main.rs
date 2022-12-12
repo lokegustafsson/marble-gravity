@@ -3,8 +3,6 @@ mod graphics;
 mod physics;
 mod spheretree;
 
-use anyhow::*;
-use async_std::task::block_on;
 use camera::Camera;
 use graphics::Graphics;
 use physics::{Body, BODIES, PHYSICS_DELTA_TIME};
@@ -15,21 +13,22 @@ use winit::{
     dpi::PhysicalPosition,
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    window::{CursorGrabMode, Window, WindowBuilder},
 };
 
 const MAX_BEHIND: Duration = Duration::from_secs(1);
 
-fn main() -> Result<(), anyhow::Error> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title("Marble Gravity")
-        .with_maximized(true)
+        //.with_maximized(true)
         .build(&event_loop)
         .unwrap();
 
-    let mut graphics = block_on(Graphics::initialize(&window))?;
+    let mut graphics = Graphics::initialize(&window).await;
     let mut camera = Camera::new();
     let mut bodies: Vec<Body> = (0..BODIES).into_iter().map(|_| Body::initial()).collect();
     let mut simulation_timestamp = Instant::now();
@@ -96,10 +95,15 @@ fn main() -> Result<(), anyhow::Error> {
     });
 }
 
-fn begin_capture_mouse(window: &Window) -> Result<()> {
-    window.set_cursor_grab(true)?;
+fn begin_capture_mouse(window: &Window) -> Result<(), ()> {
+    window
+        .set_cursor_grab(CursorGrabMode::Confined)
+        .map_err(|_| ())?;
     let size = window.inner_size();
-    window.set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2))?;
+    window
+        .set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2))
+        .unwrap();
+
     window.set_cursor_visible(false);
     Ok(())
 }
@@ -110,6 +114,6 @@ fn continue_capture_mouse(window: &Window) -> bool {
         .is_ok()
 }
 fn stop_capture_mouse(window: &Window) {
-    window.set_cursor_grab(false).unwrap();
+    window.set_cursor_grab(CursorGrabMode::None).unwrap();
     window.set_cursor_visible(true);
 }

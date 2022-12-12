@@ -2,7 +2,7 @@
 
 // Note that the rust side includes 64 bit padding at the end which is implicit here
 // Buffer items need their size to be a multiple of 128 bits. This struct is 384 bits.
-struct body {
+struct Body {
     vec3 pos;
     float radius;
     vec4 color;
@@ -10,11 +10,11 @@ struct body {
     int right;
 };
 // Internal structs
-struct hit_report {
+struct HitReport {
     vec3 normal;
     int id;
 };
-struct rays {
+struct Rays {
     vec3 reflected_pos;
     vec3 reflected_ray;
     vec3 refracted_pos;
@@ -43,7 +43,7 @@ layout(location=0) out vec4 f_color;
 
 // Buffers & Uniforms ===
 layout(set=0, binding=0) readonly buffer Bodies {
-    body bodies[];
+    Body bodies[];
 };
 // Padding is apparently necessary
 layout(set=0, binding=1) uniform Uniforms {
@@ -53,16 +53,19 @@ layout(set=0, binding=1) uniform Uniforms {
 };
 
 // Forward function declarations ===
-vec3 quad_ray(const vec3, const vec3);
-vec3 triple_ray(const vec3, const vec3);
-vec3 double_ray(const vec3, const vec3);
-rays ray_tracing_data(const vec3, const vec3, const uint);
-vec3 simple_ray(const vec3, const vec3);
-vec3 background_light(const vec3);
-hit_report cast_ray(const vec3, const vec3);
-float hit_time(const vec3, const vec3, const uint);
+float softmax(float a, float b, float c);
+float rings(float x);
+vec3 background_light(const vec3 ray);
+float hit_time(const vec3 from, const vec3 ray, const uint body);
+HitReport cast_ray(const vec3 from, const vec3 ray);
+vec3 refract3(vec3 incident, vec3 normal, float eta);
+Rays ray_tracing_data(const vec3 normal, const vec3 ray, const uint hit_id);
+vec3 simple_ray(const vec3 from, const vec3 ray);
+vec3 double_ray(const vec3 from, const vec3 ray);
+vec3 triple_ray(const vec3 from, const vec3 ray);
+vec3 quad_ray(const vec3 from, const vec3 ray);
 
-void main() {
+void fs_main() {
     const vec2 frag_pos = gl_FragCoord.xy / window_size.y;
     const vec2 mid_frag_pos = vec2(0.5 * window_size.x / window_size.y, 0.5);
     const vec3 camera_ray = normalize(vec3(frag_pos - mid_frag_pos, 1));
@@ -74,11 +77,11 @@ void main() {
 
 // Casts a ray with a triple reflections and refractions
 vec3 quad_ray(const vec3 from, const vec3 ray) {
-    const hit_report hit = cast_ray(from, ray);
+    const HitReport hit = cast_ray(from, ray);
     if (hit.id == NO_HIT) {
         return background_light(ray);
     }
-    const rays next = ray_tracing_data(hit.normal, ray, hit.id);
+    const Rays next = ray_tracing_data(hit.normal, ray, hit.id);
     const float opacity = bodies[hit.id].color.w;
 
     vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
@@ -86,14 +89,17 @@ vec3 quad_ray(const vec3 from, const vec3 ray) {
     light += (1 - opacity) * triple_ray(next.refracted_pos, next.refracted_ray); // Refracted
     return light;
 }
+void main() {
+    fs_main();
+}
 
 // Casts a ray with a double reflections and refractions
 vec3 triple_ray(const vec3 from, const vec3 ray) {
-    const hit_report hit = cast_ray(from, ray);
+    const HitReport hit = cast_ray(from, ray);
     if (hit.id == NO_HIT) {
         return background_light(ray);
     }
-    const rays next = ray_tracing_data(hit.normal, ray, hit.id);
+    const Rays next = ray_tracing_data(hit.normal, ray, hit.id);
     const float opacity = bodies[hit.id].color.w;
 
     vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
@@ -104,11 +110,11 @@ vec3 triple_ray(const vec3 from, const vec3 ray) {
 
 // Casts a ray with a single reflection and refraction
 vec3 double_ray(const vec3 from, const vec3 ray) {
-    const hit_report hit = cast_ray(from, ray);
+    const HitReport hit = cast_ray(from, ray);
     if (hit.id == NO_HIT) {
         return background_light(ray);
     }
-    const rays next = ray_tracing_data(hit.normal, ray, hit.id);
+    const Rays next = ray_tracing_data(hit.normal, ray, hit.id);
     const float opacity = bodies[hit.id].color.w;
 
     vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
@@ -117,24 +123,32 @@ vec3 double_ray(const vec3 from, const vec3 ray) {
     return light;
 }
 
+vec3 refract3(vec3 incident, vec3 normal, float eta) {
+    const float k = 1.0 - eta * eta * (1.0 - dot(normal, incident) * dot(normal, incident));
+    if (k < 0.0) {
+        return vec3(0);
+    } else {
+        return eta * incident - (eta * dot(normal, incident) + sqrt(k)) * normal;
+    }
+}
 // Computes values necessary for casting reflected and refracted rays
-rays ray_tracing_data(const vec3 normal, const vec3 ray, const uint hit_id) {
+Rays ray_tracing_data(const vec3 normal, const vec3 ray, const uint hit_id) {
     const vec3 hit_centre = bodies[hit_id].pos;
     const vec3 hit_from_centre = normal * bodies[hit_id].radius;
     const vec3 entry_pos = hit_centre + (1 + EPSILON) * hit_from_centre;
 
     const vec3 out_of_plane = cross(ray, normal);
-    const vec3 internal_ray = refract(ray, normal, 1/REFRACTIVE_INDEX);
+    const vec3 internal_ray = refract3(ray, normal, 1/REFRACTIVE_INDEX);
     const vec3 internal_normal = normalize(cross(out_of_plane, internal_ray));
     const vec3 exit_pos = hit_centre + (1 + EPSILON) * reflect(-hit_from_centre, internal_normal);
     const vec3 exit_ray = normalize(reflect(ray, internal_normal));
 
-    return rays(entry_pos, reflect(ray, normal), exit_pos, exit_ray);
+    return Rays(entry_pos, reflect(ray, normal), exit_pos, exit_ray);
 }
 
 // Casts a ray using Blinn-Phong illumination
 vec3 simple_ray(const vec3 from, const vec3 ray) {
-    hit_report hit = cast_ray(from, ray);
+    HitReport hit = cast_ray(from, ray);
     if (hit.id == NO_HIT) {
         return background_light(ray);
     }
@@ -176,7 +190,7 @@ vec3 background_light(const vec3 ray) {
 }
 
 // Cast a ray by traversing the body tree. Will set [stack_overflow] on overflow
-hit_report cast_ray(const vec3 from, const vec3 ray) {
+HitReport cast_ray(const vec3 from, const vec3 ray) {
     int stack[STACK_SIZE];
     int stack_ptr = -1;
 
@@ -211,21 +225,21 @@ hit_report cast_ray(const vec3 from, const vec3 ray) {
             if (r_hit > 0) {
                 if (stack_ptr + 1 == STACK_SIZE) {
                     stack_overflow = true;
-                    return hit_report(vec3(0), NO_HIT);
+                    return HitReport(vec3(0), NO_HIT);
                 }
                 stack[++stack_ptr] = right;
             }
             if (l_hit > 0) {
                 if (stack_ptr + 1 == STACK_SIZE) {
                     stack_overflow = true;
-                    return hit_report(vec3(0), NO_HIT);
+                    return HitReport(vec3(0), NO_HIT);
                 }
                 stack[++stack_ptr] = left;
             }
         }
     }
     const vec3 hit_pos = from + ray * first_hit_time;
-    return hit_report(normalize(hit_pos - bodies[first_hit_target].pos), first_hit_target);
+    return HitReport(normalize(hit_pos - bodies[first_hit_target].pos), first_hit_target);
 }
 
 // When will the ray from [from] along [ray] intersect body [body]?
@@ -245,7 +259,7 @@ float hit_time(const vec3 from, const vec3 ray, const uint body) {
 
     const float det = B*B - A*C;
     if (det < 0) {
-        return -1;
+        return -1.0;
     }
     const float sqrtd = sqrt(det);
     const float t1 = (B + sqrtd)/A;

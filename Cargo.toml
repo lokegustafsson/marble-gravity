@@ -2,25 +2,26 @@
 name = "marble-gravity"
 version = "0.1.0"
 authors = ["Loke Gustafsson <lokegustafsson@pm.me>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0"
-async-std = "1.7"
-bytemuck = "1.4"
-cgmath = "0.17"
-env_logger = "0.8"
+bytemuck = "1"
+cgmath = "0.18"
+env_logger = "0.10"
 log = "0.4"
-rand = "0.7"
-rayon = "1.5"
-wgpu = "0.6"
-winit = "0.23"
+rand = "0.8"
+rayon = "1"
+tokio = { version = "1", features = ["rt", "macros"] }
+wgpu = { version = "0.14", features = ["spirv"] }
+winit = "0.27"
 
 [build-dependencies]
-anyhow = "1.0"
-async-std = "1.7"
+blake3 = "1"
 glob = "0.3"
-md5 = "0.7"
-shaderc = "0.6"
+naga = { version = "0.10", features = ["glsl-in", "wgsl-out", "validate"] }
+tokio = "1"
+
+[workspace]
+resolver = "2"

@@ -38,7 +38,6 @@ const float REFRACTIVE_INDEX = 1.1;
 bool stack_overflow = false;
 
 // IO ===
-in vec4 gl_FragCoord;
 layout(location=0) out vec4 f_color;
 
 // Buffers & Uniforms ===

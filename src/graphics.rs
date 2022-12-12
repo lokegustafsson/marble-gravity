@@ -1,7 +1,9 @@
 use crate::{physics::BODIES, spheretree::Sphere};
 use cgmath::{prelude::*, Quaternion, Vector2, Vector3};
-use log::info;
-use std::mem;
+use std::{
+    mem,
+    time::{Duration, Instant},
+};
 use winit::{dpi::PhysicalSize, window::Window};
 
 const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
@@ -36,6 +38,8 @@ pub struct Graphics {
     uniforms_are_new: bool,
     render_tasks: wgpu::RenderBundle,
     window_size: (u32, u32),
+    fps_latest_print: Instant,
+    fps_frame_count: u32,
 }
 impl Graphics {
     pub async fn initialize(window: &Window) -> Self {
@@ -44,7 +48,7 @@ impl Graphics {
         let adapter = make_adapter(&instance, &surface).await;
         let (device, queue) = make_device_and_queue(&adapter).await;
 
-        info!("Found and acquired adapter:\n{:?}", adapter.get_info());
+        log::info!("Found and acquired adapter:\n{:?}", adapter.get_info());
 
         let size: (u32, u32) = window.inner_size().into();
         let mut uniforms = Uniforms::new();
@@ -76,6 +80,8 @@ impl Graphics {
             uniforms_are_new: true,
             render_tasks,
             window_size: size,
+            fps_latest_print: Instant::now(),
+            fps_frame_count: 0,
         }
     }
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
@@ -112,7 +118,7 @@ impl Graphics {
                 .surface
                 .get_current_texture()
                 .or_else(|error| {
-                    log::info!(
+                    log::debug!(
                         "retrying `wgpu::Surface::get_current_texture` once after: {error:?}"
                     );
                     configure_surface(&self.device, &self.surface, self.window_size);
@@ -160,6 +166,20 @@ impl Graphics {
                 .execute_bundles(std::iter::once(&self.render_tasks));
 
             self.queue.submit(std::iter::once(encoder.finish()));
+            surface_texture.present();
+        }
+        {
+            let now = Instant::now();
+            let span = now.duration_since(self.fps_latest_print);
+            if span > Duration::from_secs(1) {
+                let fps = self.fps_frame_count as f64 / span.as_secs_f64();
+                let precision = (2.0 - fps.log10().ceil()).max(0.0) as usize;
+                log::info!("{:.1$} FPS", fps, precision);
+                self.fps_latest_print = now;
+                self.fps_frame_count = 1;
+            } else {
+                self.fps_frame_count += 1;
+            }
         }
     }
 }
@@ -172,7 +192,7 @@ fn configure_surface(device: &wgpu::Device, surface: &wgpu::Surface, (width, hei
             format: TEXTURE_FORMAT,
             width,
             height,
-            present_mode: wgpu::PresentMode::Fifo,
+            present_mode: wgpu::PresentMode::Mailbox,
             alpha_mode: wgpu::CompositeAlphaMode::Opaque,
         },
     )

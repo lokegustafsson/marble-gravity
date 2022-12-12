@@ -24,7 +24,7 @@ async fn main() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title("Marble Gravity")
-        //.with_maximized(true)
+        .with_maximized(true)
         .build(&event_loop)
         .unwrap();
 
@@ -34,6 +34,7 @@ async fn main() {
     let mut simulation_timestamp = Instant::now();
     let mut capture_mouse = false;
     let mut slow_mode = false;
+    let mut last_redraw_request = Instant::now();
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -86,10 +87,23 @@ async fn main() {
                 }
                 window.request_redraw();
             }
-            Event::RedrawRequested(_window_id) => graphics.render(
-                make_sphere_tree(&bodies, camera.world_to_camera()),
-                camera.rotation(),
-            ),
+            Event::RedrawRequested(_window_id) => {
+                if let Some(rate) = window
+                    .current_monitor()
+                    .and_then(|mon| mon.refresh_rate_millihertz())
+                {
+                    let span = Instant::now().duration_since(last_redraw_request);
+                    let natural_span = Duration::from_secs(1000) / rate;
+                    if span < natural_span {
+                        std::thread::sleep(natural_span - span);
+                    }
+                }
+                last_redraw_request = Instant::now();
+                graphics.render(
+                    make_sphere_tree(&bodies, camera.world_to_camera()),
+                    camera.rotation(),
+                )
+            }
             _ => {}
         }
     });

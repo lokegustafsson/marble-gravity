@@ -54,17 +54,38 @@
             })
           ];
         };
+        wasm = import ./wasm.nix { inherit system cargo2nix nixpkgs pkgs; };
       in {
         devShells.default = rust.rustPkgs.workspaceShell {
           packages = let p = pkgs;
           in [
+            (p.rust-bin.stable.latest.default.override {
+              targets = [ "wasm32-unknown-unknown" "x86_64-unknown-linux-gnu" ];
+            })
             cargo2nix.outputs.packages.${system}.cargo2nix
             p.cargo-outdated
             p.rust-bin.stable.latest.clippy
-            p.rust-bin.stable.latest.default
+            wasm.wasm-bindgen
           ]; # ++ builtins.attrValues rust.packages;
         };
 
         packages = rust.packages // { default = rust.packages.marble-gravity; };
+        apps = rec {
+          serve = {
+            type = "app";
+            program = let
+              script = pkgs.writeShellScript "serve" ''
+                cargo build --release --target wasm32-unknown-unknown
+                wasm-bindgen --target web \
+                  ./target/wasm32-unknown-unknown/release/marble_gravity.wasm \
+                  --no-typescript --out-dir ./target/webpage/ \
+                  --keep-debug
+                cp index.html ./target/webpage/
+                cd ./target/webpage && python -m http.server 8080
+              '';
+            in "${script}";
+          };
+          default = serve;
+        };
       });
 }

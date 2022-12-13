@@ -9,13 +9,28 @@ edition = "2021"
 [dependencies]
 bytemuck = "1"
 cgmath = "0.18"
-env_logger = "0.10"
 log = "0.4"
 rand = "0.8"
 rayon = "1"
-tokio = { version = "1", features = ["rt", "macros"] }
-wgpu = { version = "0.14", features = ["spirv"] }
+wgpu = { version = "0.14" }
 winit = "0.27"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1", features = ["rt"] }
+env_logger = "0.10"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+console_log = "0.2.0"
+getrandom = { version = "0.2", features = ["js"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+wgpu = { version = "0.14", features = ["webgl"]}
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Window",
+    "Element",
+]}
 
 [build-dependencies]
 blake3 = "1"

@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type"/>
+  </head>
+  <body>
+    <div id="wasm"></div>
+    <script type="module">
+      import init from './marble_gravity.js';
+      init().then(() => {
+          console.log("WASM Loaded");
+      });
+    </script>
+  </body>
+</html>

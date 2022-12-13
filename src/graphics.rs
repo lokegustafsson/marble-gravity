@@ -4,7 +4,7 @@ use std::{
     mem,
     time::{Duration, Instant},
 };
-use winit::{dpi::PhysicalSize, window::Window};
+use winit::dpi::PhysicalSize;
 
 const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
 
@@ -42,15 +42,13 @@ pub struct Graphics {
     fps_frame_count: u32,
 }
 impl Graphics {
-    pub async fn initialize(window: &Window) -> Self {
-        let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
-        let surface = unsafe { instance.create_surface(window) };
-        let adapter = make_adapter(&instance, &surface).await;
-        let (device, queue) = make_device_and_queue(&adapter).await;
+    pub async fn initialize(
+        surface: wgpu::Surface,
+        device_and_queue: (wgpu::Device, wgpu::Queue),
+        size: (u32, u32),
+    ) -> Self {
+        let (device, queue) = device_and_queue;
 
-        log::info!("Found and acquired adapter:\n{:?}", adapter.get_info());
-
-        let size: (u32, u32) = window.inner_size().into();
         let mut uniforms = Uniforms::new();
         uniforms.window_size = Vector2::from(size).cast().unwrap();
         configure_surface(&device, &surface, size);
@@ -192,7 +190,11 @@ fn configure_surface(device: &wgpu::Device, surface: &wgpu::Surface, (width, hei
             format: TEXTURE_FORMAT,
             width,
             height,
-            present_mode: wgpu::PresentMode::Mailbox,
+            present_mode: if cfg!(target_arch = "wasm32") {
+                wgpu::PresentMode::Fifo
+            } else {
+                wgpu::PresentMode::Mailbox
+            },
             alpha_mode: wgpu::CompositeAlphaMode::Opaque,
         },
     )
@@ -323,29 +325,4 @@ fn make_pipeline(
         },
         multiview: None,
     })
-}
-
-async fn make_adapter(instance: &wgpu::Instance, surface: &wgpu::Surface) -> wgpu::Adapter {
-    instance
-        .request_adapter(&wgpu::RequestAdapterOptionsBase {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: Some(&surface),
-            force_fallback_adapter: false,
-        })
-        .await
-        .expect("Failed to acquire adapter")
-}
-
-async fn make_device_and_queue(adapter: &wgpu::Adapter) -> (wgpu::Device, wgpu::Queue) {
-    adapter
-        .request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("device"),
-                features: wgpu::Features::empty(),
-                limits: wgpu::Limits::default(),
-            },
-            None, // Trace path
-        )
-        .await
-        .expect("Failed to acquire device")
 }

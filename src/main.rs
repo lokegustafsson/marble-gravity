@@ -1,26 +1,35 @@
 mod camera;
 mod graphics;
 mod physics;
+mod run;
 mod spheretree;
 
-use camera::Camera;
-use graphics::Graphics;
-use physics::{Body, BODIES, PHYSICS_DELTA_TIME};
-use rayon::prelude::*;
-use spheretree::make_sphere_tree;
-use std::time::{Duration, Instant};
-use winit::{
-    dpi::PhysicalPosition,
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::{CursorGrabMode, Window, WindowBuilder},
-};
+use crate::{graphics::Graphics, physics::Body};
+use std::time::Duration;
+use winit::{event_loop::EventLoop, window::WindowBuilder};
 
 const MAX_BEHIND: Duration = Duration::from_secs(1);
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
-    env_logger::init();
+pub fn main() {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(setup_and_run())
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+        console_log::init_with_level(log::Level::Trace).expect("Couldn't initialize logger");
+        wasm_bindgen_futures::spawn_local(setup_and_run());
+    }
+}
+
+pub async fn setup_and_run() {
+    let instance = wgpu::Instance::new(wgpu::Backends::all());
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title("Marble Gravity")
@@ -28,106 +37,66 @@ async fn main() {
         .build(&event_loop)
         .unwrap();
 
-    let mut graphics = Graphics::initialize(&window).await;
-    let mut camera = Camera::new();
-    let mut bodies: Vec<Body> = (0..BODIES).into_iter().map(|_| Body::initial()).collect();
-    let mut simulation_timestamp = Instant::now();
-    let mut capture_mouse = false;
-    let mut slow_mode = false;
-    let mut last_redraw_request = Instant::now();
+    #[cfg(target_arch = "wasm32")]
+    {
+        use winit::{dpi::PhysicalSize, platform::web::WindowExtWebSys};
+        window.set_inner_size(PhysicalSize::new(450, 400));
 
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
-        match event {
-            Event::WindowEvent {
-                window_id: _id,
-                event: w_event,
-            } => match w_event {
-                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                WindowEvent::Resized(new_size) => graphics.resize(new_size),
-                WindowEvent::ModifiersChanged(mods) => {
-                    if mods.alt() || mods.logo() {
-                        stop_capture_mouse(&window);
-                        capture_mouse = false;
-                    } else {
-                        capture_mouse = begin_capture_mouse(&window).is_ok();
-                    }
-                    slow_mode = mods.ctrl();
-                }
-                WindowEvent::KeyboardInput { input: key, .. } => camera.key_input(key, slow_mode),
-                WindowEvent::CursorMoved { position: pos, .. } => {
-                    if capture_mouse && continue_capture_mouse(&window) {
-                        let size = window.inner_size();
-                        camera.mouse_input(pos.x, pos.y, size.width, size.height);
-                    }
-                }
-                WindowEvent::Focused(true) => capture_mouse = begin_capture_mouse(&window).is_ok(),
-                WindowEvent::Focused(false) => {
-                    stop_capture_mouse(&window);
-                    capture_mouse = false;
-                }
-                _ => {}
+        web_sys::window()
+            .and_then(|win| win.document())
+            .and_then(|doc| {
+                let dst = doc.get_element_by_id("wasm")?;
+                let canvas = web_sys::Element::from(window.canvas());
+                dst.append_child(&canvas).ok()?;
+                Some(())
+            })
+            .expect("Couldn't append canvas to document body.");
+    }
+
+    let surface = unsafe { instance.create_surface(&window) };
+    let adapter = get_adapter(&instance, &surface).await;
+    let size: (u32, u32) = window.inner_size().into();
+
+    let device_and_queue = get_device_and_queue(&adapter).await;
+
+    let graphics = Graphics::initialize(surface, device_and_queue, size).await;
+    log::info!("Starting event loop");
+    run::run(event_loop, window, graphics).await;
+}
+
+async fn get_adapter(instance: &wgpu::Instance, surface: &wgpu::Surface) -> wgpu::Adapter {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        log::info!("Available adapters:");
+        instance
+            .enumerate_adapters(wgpu::Backends::all())
+            .for_each(|adapter| log::info!("\t{:?}", adapter.get_info()));
+    }
+    let ret = instance
+        .request_adapter(&wgpu::RequestAdapterOptionsBase {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+        })
+        .await
+        .expect("Failed to acquire adapter");
+    ret
+}
+
+async fn get_device_and_queue(adapter: &wgpu::Adapter) -> (wgpu::Device, wgpu::Queue) {
+    adapter
+        .request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("device"),
+                features: wgpu::Features::empty(),
+                limits: if cfg!(target_arch = "wasm32") {
+                    wgpu::Limits::downlevel_webgl2_defaults()
+                } else {
+                    wgpu::Limits::default()
+                },
             },
-            Event::MainEventsCleared => {
-                let time_enter = Instant::now();
-                let mut behind = time_enter.checked_duration_since(simulation_timestamp);
-
-                while behind > Some(PHYSICS_DELTA_TIME) {
-                    bodies = bodies.par_iter().map(|body| body.update(&bodies)).collect();
-                    camera.update(PHYSICS_DELTA_TIME.as_secs_f32());
-
-                    simulation_timestamp += PHYSICS_DELTA_TIME;
-                    let new_behind = Instant::now().checked_duration_since(simulation_timestamp);
-                    if new_behind > Some(MAX_BEHIND) && new_behind > behind {
-                        println!("Physics computation too slow. Exiting...");
-                        *control_flow = ControlFlow::Exit;
-                        return;
-                    }
-                    behind = new_behind;
-                }
-                window.request_redraw();
-            }
-            Event::RedrawRequested(_window_id) => {
-                if let Some(rate) = window
-                    .current_monitor()
-                    .and_then(|mon| mon.refresh_rate_millihertz())
-                {
-                    let span = Instant::now().duration_since(last_redraw_request);
-                    let natural_span = Duration::from_secs(1000) / rate;
-                    if span < natural_span {
-                        std::thread::sleep(natural_span - span);
-                    }
-                }
-                last_redraw_request = Instant::now();
-                graphics.render(
-                    make_sphere_tree(&bodies, camera.world_to_camera()),
-                    camera.rotation(),
-                )
-            }
-            _ => {}
-        }
-    });
-}
-
-fn begin_capture_mouse(window: &Window) -> Result<(), ()> {
-    window
-        .set_cursor_grab(CursorGrabMode::Confined)
-        .map_err(|_| ())?;
-    let size = window.inner_size();
-    window
-        .set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2))
-        .unwrap();
-
-    window.set_cursor_visible(false);
-    Ok(())
-}
-fn continue_capture_mouse(window: &Window) -> bool {
-    let size = window.inner_size();
-    window
-        .set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2))
-        .is_ok()
-}
-fn stop_capture_mouse(window: &Window) {
-    window.set_cursor_grab(CursorGrabMode::None).unwrap();
-    window.set_cursor_visible(true);
+            None, // Trace path
+        )
+        .await
+        .expect("Failed to acquire device")
 }

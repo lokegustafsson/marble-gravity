@@ -6,8 +6,6 @@ use std::{
 };
 use winit::dpi::PhysicalSize;
 
-const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
-
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct Uniforms {
@@ -27,8 +25,14 @@ impl Uniforms {
 unsafe impl bytemuck::Pod for Uniforms {}
 unsafe impl bytemuck::Zeroable for Uniforms {}
 
+pub struct Parameters {
+    pub texture_format: wgpu::TextureFormat,
+    pub present_mode: wgpu::PresentMode,
+}
+
 // TODO Use push constants instead of uniforms
 pub struct Graphics {
+    parameters: Parameters,
     queue: wgpu::Queue,
     device: wgpu::Device,
     surface: wgpu::Surface,
@@ -43,6 +47,7 @@ pub struct Graphics {
 }
 impl Graphics {
     pub async fn initialize(
+        parameters: Parameters,
         surface: wgpu::Surface,
         device_and_queue: (wgpu::Device, wgpu::Queue),
         size: (u32, u32),
@@ -51,7 +56,7 @@ impl Graphics {
 
         let mut uniforms = Uniforms::new();
         uniforms.window_size = Vector2::from(size).cast().unwrap();
-        configure_surface(&device, &surface, size);
+        configure_surface(&parameters, &device, &surface, size);
 
         let body_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Body buffer"),
@@ -66,9 +71,10 @@ impl Graphics {
             mapped_at_creation: false,
         });
 
-        let render_tasks = make_render_tasks(&device, &body_buffer, &uniforms_buffer);
+        let render_tasks = make_render_tasks(&parameters, &device, &body_buffer, &uniforms_buffer);
 
         Self {
+            parameters,
             queue,
             device,
             surface,
@@ -87,7 +93,12 @@ impl Graphics {
         self.window_size = new_size.into();
         self.uniforms.window_size = Vector2::from(size);
         self.uniforms_are_new = true;
-        configure_surface(&self.device, &self.surface, self.window_size);
+        configure_surface(
+            &self.parameters,
+            &self.device,
+            &self.surface,
+            self.window_size,
+        );
     }
     pub fn render(&mut self, bodies: Vec<Sphere>, rotation: Quaternion<f32>) {
         // Copy state to GPU
@@ -119,7 +130,12 @@ impl Graphics {
                     log::debug!(
                         "retrying `wgpu::Surface::get_current_texture` once after: {error:?}"
                     );
-                    configure_surface(&self.device, &self.surface, self.window_size);
+                    configure_surface(
+                        &self.parameters,
+                        &self.device,
+                        &self.surface,
+                        self.window_size,
+                    );
                     self.surface.get_current_texture()
                 })
                 .unwrap();
@@ -182,25 +198,27 @@ impl Graphics {
     }
 }
 
-fn configure_surface(device: &wgpu::Device, surface: &wgpu::Surface, (width, height): (u32, u32)) {
+fn configure_surface(
+    parameters: &Parameters,
+    device: &wgpu::Device,
+    surface: &wgpu::Surface,
+    (width, height): (u32, u32),
+) {
     surface.configure(
         device,
         &wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: TEXTURE_FORMAT,
+            format: parameters.texture_format,
             width,
             height,
-            present_mode: if cfg!(target_arch = "wasm32") {
-                wgpu::PresentMode::Fifo
-            } else {
-                wgpu::PresentMode::Mailbox
-            },
+            present_mode: parameters.present_mode,
             alpha_mode: wgpu::CompositeAlphaMode::Opaque,
         },
     )
 }
 
 fn make_render_tasks(
+    parameters: &Parameters,
     device: &wgpu::Device,
     body_buffer: &wgpu::Buffer,
     uniforms_buffer: &wgpu::Buffer,
@@ -208,7 +226,7 @@ fn make_render_tasks(
     let mut bundle_encoder =
         device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
             label: Some("Render bundle encoder descriptor"),
-            color_formats: &[Some(TEXTURE_FORMAT)],
+            color_formats: &[Some(parameters.texture_format)],
             depth_stencil: None,
             sample_count: 1,
             multiview: None,
@@ -236,7 +254,7 @@ fn make_render_tasks(
             },
         ],
     });
-    let pipeline = make_pipeline(device, &bind_group_layout);
+    let pipeline = make_pipeline(parameters, device, &bind_group_layout);
 
     bundle_encoder.set_pipeline(&pipeline);
     bundle_encoder.set_bind_group(0, &bind_group, &[]);
@@ -275,6 +293,7 @@ fn make_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
 }
 
 fn make_pipeline(
+    parameters: &Parameters,
     device: &wgpu::Device,
     bind_group_layout: &wgpu::BindGroupLayout,
 ) -> wgpu::RenderPipeline {
@@ -302,7 +321,7 @@ fn make_pipeline(
             module: &fragment_module,
             entry_point: "main",
             targets: &[Some(wgpu::ColorTargetState {
-                format: TEXTURE_FORMAT,
+                format: parameters.texture_format,
                 blend: Some(wgpu::BlendState::REPLACE),
                 write_mask: wgpu::ColorWrites::ALL,
             })],

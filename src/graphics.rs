@@ -147,7 +147,7 @@ impl Graphics {
                 .begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("render pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &surface_texture_view,
+                        view: surface_texture_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -184,7 +184,7 @@ impl Graphics {
 
 fn configure_surface(device: &wgpu::Device, surface: &wgpu::Surface, (width, height): (u32, u32)) {
     surface.configure(
-        &device,
+        device,
         &wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: TEXTURE_FORMAT,
@@ -221,7 +221,7 @@ fn make_render_tasks(
             wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                    buffer: &body_buffer,
+                    buffer: body_buffer,
                     offset: 0,
                     size: None,
                 }),
@@ -229,7 +229,7 @@ fn make_render_tasks(
             wgpu::BindGroupEntry {
                 binding: 1,
                 resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                    buffer: &uniforms_buffer,
+                    buffer: uniforms_buffer,
                     offset: 0,
                     size: None,
                 }),
@@ -281,7 +281,7 @@ fn make_pipeline(
     // All uniforms reside in the same bind group (since nothing is ever swapped out).
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Pipeline layout"),
-        bind_group_layouts: &[&bind_group_layout],
+        bind_group_layouts: &[bind_group_layout],
         push_constant_ranges: &[],
     });
 

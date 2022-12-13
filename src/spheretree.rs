@@ -90,7 +90,7 @@ impl Sphere {
             _padding: 0,
         }
     }
-    pub(self) fn branch(a_index: usize, b_index: usize, spheres: &Vec<Option<Sphere>>) -> Self {
+    pub(self) fn branch(a_index: usize, b_index: usize, spheres: &[Option<Sphere>]) -> Self {
         let a = spheres[a_index].unwrap();
         let b = spheres[b_index].unwrap();
         let rel_pos_norm = (b.pos - a.pos).normalize();

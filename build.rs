@@ -7,7 +7,7 @@ use std::{collections::HashMap, env, fs, path::PathBuf};
 
 fn main() {
     let root_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let src_dir = &root_dir.clone().join("src/");
+    let src_dir = &root_dir.join("src/");
     let out_dir = &root_dir.join("target/");
 
     // Find already compiled
@@ -119,13 +119,13 @@ impl CompiledShaders {
         };
         Self(
             entries
-                .split('\n')
-                .map(|line| {
+                .lines()
+                .filter_map(|line| {
                     let mut words = line.split(' ');
-                    Some((PathBuf::from(words.nth(0)?), String::from(words.nth(0)?)))
+                    let filename = PathBuf::from(words.next()?);
+                    let hash = String::from(words.next()?);
+                    Some((filename, hash))
                 })
-                .filter(Option::is_some)
-                .map(Option::unwrap)
                 .collect(),
         )
     }
@@ -145,6 +145,6 @@ impl CompiledShaders {
             }
         }
         self.0.insert(shader.path.clone(), digest);
-        return true;
+        true
     }
 }

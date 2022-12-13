@@ -72,15 +72,14 @@ async fn get_adapter(instance: &wgpu::Instance, surface: &wgpu::Surface) -> wgpu
             .enumerate_adapters(wgpu::Backends::all())
             .for_each(|adapter| log::info!("\t{:?}", adapter.get_info()));
     }
-    let ret = instance
+    instance
         .request_adapter(&wgpu::RequestAdapterOptionsBase {
             power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: Some(&surface),
+            compatible_surface: Some(surface),
             force_fallback_adapter: false,
         })
         .await
-        .expect("Failed to acquire adapter");
-    ret
+        .expect("Failed to acquire adapter")
 }
 
 async fn get_device_and_queue(adapter: &wgpu::Adapter) -> (wgpu::Device, wgpu::Queue) {

@@ -75,7 +75,7 @@ pub struct Sphere {
     color: Vector4<f32>,
     left: i32,
     right: i32,
-    _padding: u64, // Bump to 256 bits to satisfy multiple of 128 bit criteria
+    _padding: [u8; 8], // Bump to 48 bytes to satisfy multiple of 16 bytes criteria
 }
 impl Sphere {
     pub(self) fn leaf(body: &Body, world_to_camera: &Matrix4<f32>) -> Self {
@@ -87,7 +87,7 @@ impl Sphere {
             color: body.color(),
             left: -1,
             right: -1,
-            _padding: 0,
+            _padding: [0; 8],
         }
     }
     pub(self) fn branch(a_index: usize, b_index: usize, spheres: &[Option<Sphere>]) -> Self {
@@ -104,7 +104,7 @@ impl Sphere {
             color: Vector4::zero(),
             left: a_index as i32,
             right: b_index as i32,
-            _padding: 0,
+            _padding: [0; 8],
         }
     }
     pub(self) fn placeholder() -> Self {
@@ -114,7 +114,7 @@ impl Sphere {
             color: Vector4::zero(),
             left: 0,
             right: 0,
-            _padding: 0,
+            _padding: [0; 8],
         }
     }
 }

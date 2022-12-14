@@ -9,9 +9,9 @@ use crate::{
     physics::Body,
 };
 use std::time::Duration;
-use winit::{event_loop::EventLoop, window::WindowBuilder};
+use winit::{event_loop::EventLoopBuilder, window::WindowBuilder};
 
-const MAX_BEHIND: Duration = Duration::from_secs(1);
+const PHYSICS_MAX_BEHIND_TIME: Duration = Duration::from_secs(1);
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen(start))]
 pub fn start() {
@@ -27,7 +27,7 @@ pub fn start() {
     #[cfg(target_arch = "wasm32")]
     {
         std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-        console_log::init_with_level(log::Level::Trace).expect("Couldn't initialize logger");
+        console_log::init_with_level(log::Level::Info).unwrap();
         wasm_bindgen_futures::spawn_local(setup_and_run());
     }
 }
@@ -35,7 +35,7 @@ pub fn start() {
 async fn setup_and_run() {
     log::info!("Setting up");
     let instance = wgpu::Instance::new(wgpu::Backends::all());
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoopBuilder::with_user_event().build();
     let window = WindowBuilder::new()
         .with_title("Marble Gravity")
         .with_maximized(true)
@@ -45,10 +45,14 @@ async fn setup_and_run() {
     #[cfg(target_arch = "wasm32")]
     {
         use winit::{dpi::PhysicalSize, platform::web::WindowExtWebSys};
-        window.set_inner_size(PhysicalSize::new(450, 400));
+        let js_window = web_sys::window().unwrap();
+        window.set_inner_size(PhysicalSize::new(
+            js_window.inner_width().unwrap().as_f64().unwrap() as u32,
+            js_window.inner_height().unwrap().as_f64().unwrap() as u32,
+        ));
 
-        web_sys::window()
-            .and_then(|win| win.document())
+        js_window
+            .document()
             .and_then(|doc| {
                 let dst = doc.get_element_by_id("wasm")?;
                 let canvas = web_sys::Element::from(window.canvas());
@@ -77,7 +81,7 @@ async fn setup_and_run() {
 
     let graphics = Graphics::initialize(parameters, surface, device_and_queue, size).await;
     log::info!("Starting event loop");
-    run::run(event_loop, window, graphics).await;
+    run::run(event_loop, window, graphics);
 }
 
 async fn get_adapter(instance: &wgpu::Instance, surface: &wgpu::Surface) -> wgpu::Adapter {

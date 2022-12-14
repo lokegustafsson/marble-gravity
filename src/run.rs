@@ -2,10 +2,10 @@ use crate::{
     camera::Camera,
     graphics::Graphics,
     physics::{Body, BODIES, PHYSICS_DELTA_TIME},
-    spheretree, MAX_BEHIND,
+    spheretree, PHYSICS_MAX_BEHIND_TIME,
 };
-use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
-use std::time::{Duration, Instant};
+use instant::Instant;
+use std::time::Duration;
 use winit::{
     dpi::PhysicalPosition,
     event::{Event, WindowEvent},
@@ -13,13 +13,22 @@ use winit::{
     window::{CursorGrabMode, Window},
 };
 
-pub async fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
+pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
     let mut camera = Camera::new();
     let mut bodies: Vec<Body> = (0..BODIES).into_iter().map(|_| Body::initial()).collect();
-    let mut simulation_timestamp = Instant::now();
     let mut capture_mouse = false;
     let mut slow_mode = false;
-    let mut last_redraw_request = Instant::now();
+
+    let desired_frame_time = match window
+        .current_monitor()
+        .and_then(|mon| mon.refresh_rate_millihertz())
+    {
+        Some(rate) => Duration::from_secs(1000) / rate,
+        None => Duration::from_secs(1) / 60,
+    };
+    let mut last_frame_processing_begun_instant = Instant::now();
+    let mut physics_timestamp = last_frame_processing_begun_instant;
+    let mut camera_timestamp = last_frame_processing_begun_instant;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -54,40 +63,41 @@ pub async fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphi
                 _ => {}
             },
             Event::MainEventsCleared => {
-                let time_enter = Instant::now();
-                let mut behind = time_enter.checked_duration_since(simulation_timestamp);
+                let now = Instant::now();
+                camera_timestamp += camera.update_return_stepped(now - camera_timestamp);
+                if now < last_frame_processing_begun_instant + desired_frame_time {
+                    control_flow
+                        .set_wait_until(last_frame_processing_begun_instant + desired_frame_time);
+                    return;
+                }
+                last_frame_processing_begun_instant = now;
 
-                while behind > Some(PHYSICS_DELTA_TIME) {
-                    bodies = bodies.par_iter().map(|body| body.update(&bodies)).collect();
-                    camera.update(PHYSICS_DELTA_TIME.as_secs_f32());
-
-                    simulation_timestamp += PHYSICS_DELTA_TIME;
-                    let new_behind = Instant::now().checked_duration_since(simulation_timestamp);
-                    if new_behind > Some(MAX_BEHIND) && new_behind > behind {
-                        println!("Physics computation too slow. Exiting...");
-                        *control_flow = ControlFlow::Exit;
-                        return;
-                    }
-                    behind = new_behind;
+                if now.checked_duration_since(physics_timestamp) > Some(PHYSICS_MAX_BEHIND_TIME) {
+                    log::error!(
+                        "Physics computation too far behind ({}ms). Exiting..",
+                        PHYSICS_MAX_BEHIND_TIME.as_millis()
+                    );
+                    control_flow.set_exit();
+                }
+                while now.checked_duration_since(physics_timestamp) > Some(PHYSICS_DELTA_TIME) {
+                    bodies = bodies.iter().map(|body| body.update(&bodies)).collect();
+                    physics_timestamp += PHYSICS_DELTA_TIME;
                 }
                 window.request_redraw();
             }
             Event::RedrawRequested(_window_id) => {
-                if let Some(rate) = window
-                    .current_monitor()
-                    .and_then(|mon| mon.refresh_rate_millihertz())
-                {
-                    let span = Instant::now().duration_since(last_redraw_request);
-                    let natural_span = Duration::from_secs(1000) / rate;
-                    if span < natural_span {
-                        std::thread::sleep(natural_span - span);
-                    }
-                }
-                last_redraw_request = Instant::now();
                 graphics.render(
                     spheretree::make_sphere_tree(&bodies, camera.world_to_camera()),
                     camera.rotation(),
-                )
+                );
+                graphics.report_frame_time_multiple(
+                    Instant::now()
+                        .duration_since(last_frame_processing_begun_instant)
+                        .as_secs_f64()
+                        / desired_frame_time.as_secs_f64(),
+                );
+                control_flow
+                    .set_wait_until(last_frame_processing_begun_instant + desired_frame_time);
             }
             _ => {}
         }

@@ -1,13 +1,14 @@
 #version 450
 
-// Note that the rust side includes 64 bit padding at the end which is implicit here
-// Buffer items need their size to be a multiple of 128 bits. This struct is 384 bits.
+// Note that the rust side includes 8 bytes padding at the end which is implicit here
+// Buffer items need their size to be a multiple of 16 bytes. This struct is 48 bytes.
 struct Body {
     vec3 pos;
     float radius;
     vec4 color;
     int left;
     int right;
+    vec2 padding;
 };
 // Internal structs
 struct HitReport {
@@ -23,6 +24,7 @@ struct Rays {
 
 
 // Constants ===
+const uint BODIES = 100;
 const int STACK_SIZE = 20;
 const vec4 RED = vec4(1,0,0,1);
 const int NO_HIT = -1;
@@ -41,14 +43,15 @@ bool stack_overflow = false;
 layout(location=0) out vec4 f_color;
 
 // Buffers & Uniforms ===
-layout(set=0, binding=0) readonly buffer Bodies {
-    Body bodies[];
+layout(set=0, binding=0) uniform Bodies {
+    Body bodies[2*BODIES - 1];
 };
 // Padding is apparently necessary
 layout(set=0, binding=1) uniform Uniforms {
     vec3 sun_direction;
-    float _padding;
+    uint ray_splits;
     vec2 window_size;
+    vec2 padding;
 };
 
 // Forward function declarations ===
@@ -59,41 +62,36 @@ float hit_time(const vec3 from, const vec3 ray, const uint body);
 HitReport cast_ray(const vec3 from, const vec3 ray);
 vec3 refract3(vec3 incident, vec3 normal, float eta);
 Rays ray_tracing_data(const vec3 normal, const vec3 ray, const uint hit_id);
-vec3 simple_ray(const vec3 from, const vec3 ray);
-vec3 double_ray(const vec3 from, const vec3 ray);
-vec3 triple_ray(const vec3 from, const vec3 ray);
-vec3 quad_ray(const vec3 from, const vec3 ray);
+vec3 split0_ray(const vec3 from, const vec3 ray);
+vec3 split1_ray(const vec3 from, const vec3 ray);
+vec3 split2_ray(const vec3 from, const vec3 ray);
+vec3 split3_ray(const vec3 from, const vec3 ray);
+vec3 split4_ray(const vec3 from, const vec3 ray);
 
 void fs_main() {
     const vec2 frag_pos = gl_FragCoord.xy / window_size.y;
     const vec2 mid_frag_pos = vec2(0.5 * window_size.x / window_size.y, 0.5);
     const vec3 camera_ray = normalize(vec3(frag_pos - mid_frag_pos, 1));
-    f_color = vec4(triple_ray(vec3(0), camera_ray), 1);
+    if (ray_splits == 0) {
+        f_color = vec4(split0_ray(vec3(0), camera_ray), 1);
+    } else if (ray_splits == 1) {
+        f_color = vec4(split1_ray(vec3(0), camera_ray), 1);
+    } else if (ray_splits == 2) {
+        f_color = vec4(split2_ray(vec3(0), camera_ray), 1);
+    } else if (ray_splits == 3) {
+        f_color = vec4(split3_ray(vec3(0), camera_ray), 1);
+    } else {
+        f_color = vec4(split4_ray(vec3(0), camera_ray), 1);
+    }
     if (stack_overflow) {
         f_color = RED;
     }
-}
-
-// Casts a ray with a triple reflections and refractions
-vec3 quad_ray(const vec3 from, const vec3 ray) {
-    const HitReport hit = cast_ray(from, ray);
-    if (hit.id == NO_HIT) {
-        return background_light(ray);
-    }
-    const Rays next = ray_tracing_data(hit.normal, ray, hit.id);
-    const float opacity = bodies[hit.id].color.w;
-
-    vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
-    light += opacity * triple_ray(next.reflected_pos, next.reflected_ray); // Reflected
-    light += (1 - opacity) * triple_ray(next.refracted_pos, next.refracted_ray); // Refracted
-    return light;
 }
 void main() {
     fs_main();
 }
 
-// Casts a ray with a double reflections and refractions
-vec3 triple_ray(const vec3 from, const vec3 ray) {
+vec3 split4_ray(const vec3 from, const vec3 ray) {
     const HitReport hit = cast_ray(from, ray);
     if (hit.id == NO_HIT) {
         return background_light(ray);
@@ -102,13 +100,11 @@ vec3 triple_ray(const vec3 from, const vec3 ray) {
     const float opacity = bodies[hit.id].color.w;
 
     vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
-    light += opacity * double_ray(next.reflected_pos, next.reflected_ray); // Reflected
-    light += (1 - opacity) * double_ray(next.refracted_pos, next.refracted_ray); // Refracted
+    light += opacity * split3_ray(next.reflected_pos, next.reflected_ray); // Reflected
+    light += (1 - opacity) * split3_ray(next.refracted_pos, next.refracted_ray); // Refracted
     return light;
 }
-
-// Casts a ray with a single reflection and refraction
-vec3 double_ray(const vec3 from, const vec3 ray) {
+vec3 split3_ray(const vec3 from, const vec3 ray) {
     const HitReport hit = cast_ray(from, ray);
     if (hit.id == NO_HIT) {
         return background_light(ray);
@@ -117,8 +113,34 @@ vec3 double_ray(const vec3 from, const vec3 ray) {
     const float opacity = bodies[hit.id].color.w;
 
     vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
-    light += opacity * simple_ray(next.reflected_pos, next.reflected_ray); // Reflected
-    light += (1 - opacity) * simple_ray(next.refracted_pos, next.refracted_ray); // Refracted
+    light += opacity * split2_ray(next.reflected_pos, next.reflected_ray); // Reflected
+    light += (1 - opacity) * split2_ray(next.refracted_pos, next.refracted_ray); // Refracted
+    return light;
+}
+vec3 split2_ray(const vec3 from, const vec3 ray) {
+    const HitReport hit = cast_ray(from, ray);
+    if (hit.id == NO_HIT) {
+        return background_light(ray);
+    }
+    const Rays next = ray_tracing_data(hit.normal, ray, hit.id);
+    const float opacity = bodies[hit.id].color.w;
+
+    vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
+    light += opacity * split1_ray(next.reflected_pos, next.reflected_ray); // Reflected
+    light += (1 - opacity) * split1_ray(next.refracted_pos, next.refracted_ray); // Refracted
+    return light;
+}
+vec3 split1_ray(const vec3 from, const vec3 ray) {
+    const HitReport hit = cast_ray(from, ray);
+    if (hit.id == NO_HIT) {
+        return background_light(ray);
+    }
+    const Rays next = ray_tracing_data(hit.normal, ray, hit.id);
+    const float opacity = bodies[hit.id].color.w;
+
+    vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
+    light += opacity * split0_ray(next.reflected_pos, next.reflected_ray); // Reflected
+    light += (1 - opacity) * split0_ray(next.refracted_pos, next.refracted_ray); // Refracted
     return light;
 }
 
@@ -146,7 +168,7 @@ Rays ray_tracing_data(const vec3 normal, const vec3 ray, const uint hit_id) {
 }
 
 // Casts a ray using Blinn-Phong illumination
-vec3 simple_ray(const vec3 from, const vec3 ray) {
+vec3 split0_ray(const vec3 from, const vec3 ray) {
     HitReport hit = cast_ray(from, ray);
     if (hit.id == NO_HIT) {
         return background_light(ray);

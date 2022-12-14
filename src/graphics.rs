@@ -1,24 +1,24 @@
 use crate::{physics::BODIES, spheretree::Sphere};
 use cgmath::{prelude::*, Quaternion, Vector2, Vector3};
-use std::{
-    mem,
-    time::{Duration, Instant},
-};
+use instant::Instant;
+use std::{mem, time::Duration};
 use winit::dpi::PhysicalSize;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct Uniforms {
     pub(self) source_direction: Vector3<f32>,
-    _padding: u32,
+    ray_splits: u32,
     pub(self) window_size: Vector2<f32>,
+    _padding2: [u32; 2],
 }
 impl Uniforms {
     pub fn new() -> Self {
         Self {
             source_direction: Vector3::zero(),
-            _padding: 0,
+            ray_splits: 2,
             window_size: Vector2::zero(),
+            _padding2: [0; 2],
         }
     }
 }
@@ -30,7 +30,6 @@ pub struct Parameters {
     pub present_mode: wgpu::PresentMode,
 }
 
-// TODO Use push constants instead of uniforms
 pub struct Graphics {
     parameters: Parameters,
     queue: wgpu::Queue,
@@ -44,6 +43,8 @@ pub struct Graphics {
     window_size: (u32, u32),
     fps_latest_print: Instant,
     fps_frame_count: u32,
+    frame_time_undershoot: i32,
+    total_frame_count: i32,
 }
 impl Graphics {
     pub async fn initialize(
@@ -61,7 +62,7 @@ impl Graphics {
         let body_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Body buffer"),
             size: ((2 * BODIES - 1) * mem::size_of::<Sphere>() as u32) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let uniforms_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -86,6 +87,33 @@ impl Graphics {
             window_size: size,
             fps_latest_print: Instant::now(),
             fps_frame_count: 0,
+            frame_time_undershoot: 0,
+            total_frame_count: 0,
+        }
+    }
+    pub fn report_frame_time_multiple(&mut self, multiple_of_target: f64) {
+        const MAX_THRESHOLD: i32 = 50;
+
+        let threshold = MAX_THRESHOLD.min(5 + self.total_frame_count / 5);
+        match multiple_of_target {
+            x if x > 1.0 && self.frame_time_undershoot > -threshold => {
+                self.frame_time_undershoot -= 1;
+            }
+            x if x < 0.5 && self.frame_time_undershoot < threshold => {
+                self.frame_time_undershoot += 1;
+            }
+            _ => {}
+        }
+        if self.frame_time_undershoot == threshold && self.uniforms.ray_splits < 4 {
+            self.uniforms.ray_splits += 1;
+            self.uniforms_are_new = true;
+            self.frame_time_undershoot = 0;
+            log::info!("Incremented to ray_splits={}", self.uniforms.ray_splits);
+        } else if self.frame_time_undershoot == -threshold && self.uniforms.ray_splits > 0 {
+            self.uniforms.ray_splits -= 1;
+            self.uniforms_are_new = true;
+            self.frame_time_undershoot = 0;
+            log::info!("Decremented to ray_splits={}", self.uniforms.ray_splits);
         }
     }
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
@@ -187,13 +215,14 @@ impl Graphics {
             let span = now.duration_since(self.fps_latest_print);
             if span > Duration::from_secs(1) {
                 let fps = self.fps_frame_count as f64 / span.as_secs_f64();
-                let precision = (2.0 - fps.log10().ceil()).max(0.0) as usize;
+                let precision = (2 - fps.log10().ceil() as isize).max(0) as usize;
                 log::info!("{:.1$} FPS", fps, precision);
                 self.fps_latest_print = now;
                 self.fps_frame_count = 1;
             } else {
                 self.fps_frame_count += 1;
             }
+            self.total_frame_count = self.total_frame_count.saturating_add(1);
         }
     }
 }
@@ -272,7 +301,7 @@ fn make_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
                 binding: 0,
                 visibility: wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
                     min_binding_size: None,
                 },

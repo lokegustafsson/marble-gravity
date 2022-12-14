@@ -66,7 +66,11 @@
             p.cargo-outdated
             p.rust-bin.stable.latest.clippy
             wasm.wasm-bindgen
+            p.perl
+            pkgs.gperftools
+            p.gv
           ]; # ++ builtins.attrValues rust.packages;
+          FOO = "${pkgs.gperftools}";
         };
 
         packages = rust.packages // { default = rust.packages.marble-gravity; };

@@ -108,10 +108,9 @@ impl Camera {
             _ => {}
         }
     }
-    pub fn mouse_input(&mut self, x: f64, y: f64, w: u32, h: u32) {
-        let (mx, my) = (w as f32 / 2.0, h as f32 / 2.0);
-        self.pitch_up -= SENSITIVITY * (y as f32 - my);
-        self.yaw_right += SENSITIVITY * (x as f32 - mx);
+    pub fn mouse_input(&mut self, dx: f64, dy: f64) {
+        self.pitch_up -= SENSITIVITY * (dy as f32);
+        self.yaw_right += SENSITIVITY * (dx as f32);
     }
     pub fn world_to_camera(&mut self) -> Matrix4<f32> {
         let trans = Matrix4::from_translation(-self.position);

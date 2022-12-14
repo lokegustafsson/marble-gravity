@@ -8,7 +8,7 @@ use instant::Instant;
 use std::time::Duration;
 use winit::{
     dpi::PhysicalPosition,
-    event::{Event, WindowEvent},
+    event::{DeviceEvent, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{CursorGrabMode, Window},
 };
@@ -26,6 +26,7 @@ pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
         Some(rate) => Duration::from_secs(1000) / rate,
         None => Duration::from_secs(1) / 60,
     };
+    let mut initialized = false;
     let mut last_frame_processing_begun_instant = Instant::now();
     let mut physics_timestamp = last_frame_processing_begun_instant;
     let mut camera_timestamp = last_frame_processing_begun_instant;
@@ -49,12 +50,6 @@ pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
                     slow_mode = mods.ctrl();
                 }
                 WindowEvent::KeyboardInput { input: key, .. } => camera.key_input(key, slow_mode),
-                WindowEvent::CursorMoved { position: pos, .. } => {
-                    if capture_mouse && continue_capture_mouse(&window) {
-                        let size = window.inner_size();
-                        camera.mouse_input(pos.x, pos.y, size.width, size.height);
-                    }
-                }
                 WindowEvent::Focused(true) => capture_mouse = begin_capture_mouse(&window).is_ok(),
                 WindowEvent::Focused(false) => {
                     stop_capture_mouse(&window);
@@ -62,8 +57,22 @@ pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
                 }
                 _ => {}
             },
+            Event::DeviceEvent {
+                device_id: _,
+                event: DeviceEvent::MouseMotion { delta: (dx, dy) },
+            } => {
+                if capture_mouse {
+                    continue_capture_mouse(&window);
+                    camera.mouse_input(dx, dy);
+                }
+            }
             Event::MainEventsCleared => {
                 let now = Instant::now();
+                if !initialized {
+                    camera_timestamp = now;
+                    physics_timestamp = now;
+                    initialized = true;
+                }
                 camera_timestamp += camera.update_return_stepped(now - camera_timestamp);
                 if now < last_frame_processing_begun_instant + desired_frame_time {
                     control_flow
@@ -107,20 +116,14 @@ pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
 fn begin_capture_mouse(window: &Window) -> Result<(), ()> {
     window
         .set_cursor_grab(CursorGrabMode::Confined)
+        .or_else(|_| window.set_cursor_grab(CursorGrabMode::Locked))
         .map_err(|_| ())?;
-    let size = window.inner_size();
-    window
-        .set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2))
-        .unwrap();
-
     window.set_cursor_visible(false);
     Ok(())
 }
-fn continue_capture_mouse(window: &Window) -> bool {
+fn continue_capture_mouse(window: &Window) {
     let size = window.inner_size();
-    window
-        .set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2))
-        .is_ok()
+    let _ = window.set_cursor_position(PhysicalPosition::new(size.width / 2, size.height / 2));
 }
 fn stop_capture_mouse(window: &Window) {
     window.set_cursor_grab(CursorGrabMode::None).unwrap();

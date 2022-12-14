@@ -8,7 +8,7 @@ use instant::Instant;
 use std::time::Duration;
 use winit::{
     dpi::PhysicalPosition,
-    event::{DeviceEvent, Event, WindowEvent},
+    event::{DeviceEvent, ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{CursorGrabMode, Window},
 };
@@ -25,7 +25,7 @@ pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
     {
         Some(rate) => Duration::from_secs(1000) / rate,
         None => Duration::from_secs(1) / 60,
-    };
+    } / 10;
     let mut initialized = false;
     let mut last_frame_processing_begun_instant = Instant::now();
     let mut physics_timestamp = last_frame_processing_begun_instant;
@@ -49,6 +49,20 @@ pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
                     }
                     slow_mode = mods.ctrl();
                 }
+                WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            virtual_keycode:
+                                Some(vk @ (VirtualKeyCode::Plus | VirtualKeyCode::Minus)),
+                            state: ElementState::Pressed,
+                            ..
+                        },
+                    ..
+                } => graphics.change_ray_splits(match vk {
+                    VirtualKeyCode::Plus => 1,
+                    VirtualKeyCode::Minus => -1,
+                    _ => unreachable!(),
+                }),
                 WindowEvent::KeyboardInput { input: key, .. } => camera.key_input(key, slow_mode),
                 WindowEvent::Focused(true) => capture_mouse = begin_capture_mouse(&window).is_ok(),
                 WindowEvent::Focused(false) => {
@@ -98,12 +112,6 @@ pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
                 graphics.render(
                     spheretree::make_sphere_tree(&bodies, camera.world_to_camera()),
                     camera.rotation(),
-                );
-                graphics.report_frame_time_multiple(
-                    Instant::now()
-                        .duration_since(last_frame_processing_begun_instant)
-                        .as_secs_f64()
-                        / desired_frame_time.as_secs_f64(),
                 );
                 control_flow
                     .set_wait_until(last_frame_processing_begun_instant + desired_frame_time);

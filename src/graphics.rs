@@ -43,8 +43,6 @@ pub struct Graphics {
     window_size: (u32, u32),
     fps_latest_print: Instant,
     fps_frame_count: u32,
-    frame_time_undershoot: i32,
-    total_frame_count: i32,
 }
 impl Graphics {
     pub async fn initialize(
@@ -87,34 +85,22 @@ impl Graphics {
             window_size: size,
             fps_latest_print: Instant::now(),
             fps_frame_count: 0,
-            frame_time_undershoot: 0,
-            total_frame_count: 0,
         }
     }
-    pub fn report_frame_time_multiple(&mut self, multiple_of_target: f64) {
-        const MAX_THRESHOLD: i32 = 50;
-
-        let threshold = MAX_THRESHOLD.min(5 + self.total_frame_count / 5);
-        match multiple_of_target {
-            x if x > 1.0 && self.frame_time_undershoot > -threshold => {
-                self.frame_time_undershoot -= 1;
+    pub fn change_ray_splits(&mut self, delta: i8) {
+        match delta {
+            1 if self.uniforms.ray_splits < 4 => {
+                self.uniforms.ray_splits += 1;
+                log::info!("Incremented to ray_splits={}", self.uniforms.ray_splits);
             }
-            x if x < 0.5 && self.frame_time_undershoot < threshold => {
-                self.frame_time_undershoot += 1;
+            -1 if self.uniforms.ray_splits > 0 => {
+                self.uniforms.ray_splits -= 1;
+                log::info!("Decremented to ray_splits={}", self.uniforms.ray_splits);
             }
-            _ => {}
+            -1 | 1 => {}
+            other => unreachable!("{}", other),
         }
-        if self.frame_time_undershoot == threshold && self.uniforms.ray_splits < 4 {
-            self.uniforms.ray_splits += 1;
-            self.uniforms_are_new = true;
-            self.frame_time_undershoot = 0;
-            log::info!("Incremented to ray_splits={}", self.uniforms.ray_splits);
-        } else if self.frame_time_undershoot == -threshold && self.uniforms.ray_splits > 0 {
-            self.uniforms.ray_splits -= 1;
-            self.uniforms_are_new = true;
-            self.frame_time_undershoot = 0;
-            log::info!("Decremented to ray_splits={}", self.uniforms.ray_splits);
-        }
+        self.uniforms_are_new = true;
     }
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         let size: (f32, f32) = (new_size.width as f32, new_size.height as f32);
@@ -222,7 +208,6 @@ impl Graphics {
             } else {
                 self.fps_frame_count += 1;
             }
-            self.total_frame_count = self.total_frame_count.saturating_add(1);
         }
     }
 }

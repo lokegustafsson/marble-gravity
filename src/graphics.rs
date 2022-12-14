@@ -2,7 +2,6 @@ use crate::{physics::BODIES, spheretree::Sphere};
 use cgmath::{prelude::*, Quaternion, Vector2, Vector3};
 use instant::Instant;
 use std::{mem, time::Duration};
-use winit::dpi::PhysicalSize;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -102,10 +101,13 @@ impl Graphics {
         }
         self.uniforms_are_new = true;
     }
-    pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
-        let size: (f32, f32) = (new_size.width as f32, new_size.height as f32);
-        self.window_size = new_size.into();
-        self.uniforms.window_size = Vector2::from(size);
+    #[cfg(target_arch = "wasm32")]
+    pub fn window_size(&self) -> (u32, u32) {
+        self.window_size
+    }
+    pub fn resize(&mut self, (w, h): (u32, u32)) {
+        self.window_size = (w, h);
+        self.uniforms.window_size = Vector2::from((w as f32, h as f32));
         self.uniforms_are_new = true;
         configure_surface(
             &self.parameters,

@@ -18,11 +18,7 @@ pub fn start() {
     #[cfg(not(target_arch = "wasm32"))]
     {
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(setup_and_run())
+        pollster::block_on(setup_and_run());
     }
     #[cfg(target_arch = "wasm32")]
     {

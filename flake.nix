@@ -63,12 +63,10 @@
               targets = [ "wasm32-unknown-unknown" "x86_64-unknown-linux-gnu" ];
             })
             cargo2nix.outputs.packages.${system}.cargo2nix
+            p.cargo-flamegraph
             p.cargo-outdated
             p.rust-bin.stable.latest.clippy
             wasm.wasm-bindgen
-            p.perl
-            pkgs.gperftools
-            p.gv
           ]; # ++ builtins.attrValues rust.packages;
           FOO = "${pkgs.gperftools}";
         };

@@ -24,7 +24,7 @@ struct Rays {
 
 
 // Constants ===
-const uint BODIES = 100;
+const uint BODIES = 170;
 const int STACK_SIZE = 20;
 const vec4 RED = vec4(1,0,0,1);
 const int NO_HIT = -1;

@@ -1,13 +1,16 @@
 use cgmath::{prelude::*, Vector3, Vector4};
+use rand_distr::Distribution;
 use std::time::Duration;
 
 pub const PHYSICS_DELTA_TIME: Duration = Duration::from_millis(1);
-pub const BODIES: u32 = 100;
-const GRAVITY_CONSTANT: f32 = 5.0;
-const GAP: f32 = 0.0001;
-const STIFFNESS: f32 = 10.0;
-const DAMPING: f32 = 0.5; // In (0,1); less than 0.05 is wonky
+pub const BODIES: u32 = 170;
+const GRAVITY_CONSTANT: f32 = 80.0;
+const GAP: f32 = 0.001;
+const STIFFNESS: f32 = 1.0;
+const DAMPING: f32 = 0.2; // In (0,1); less than 0.05 is wonky
+const SYSTEM_RADIUS: f32 = 10.0;
 
+#[derive(Copy, Clone)]
 pub struct Body {
     pos: Vector3<f32>,
     vel: Vector3<f32>,
@@ -16,18 +19,40 @@ pub struct Body {
 }
 impl Body {
     pub fn initial() -> Body {
-        fn pos() -> f32 {
-            2.0 * (rand::random::<f32>() - 0.5)
-        }
         fn c() -> f32 {
             rand::random::<f32>()
         }
+        let mut normal = rand_distr::Normal::new(0.0f32, 1.0)
+            .unwrap()
+            .sample_iter(rand::thread_rng());
+        let mut r = move || normal.next().unwrap();
+        let pos = [r(), r(), r()].into();
+        let rand = [r(), r(), r()].into();
         Body {
-            pos: [pos(), pos(), pos()].into(),
-            vel: Vector3::zero(),
+            pos,
+            vel: 0.1 * pos.cross(rand),
             radius: 0.03 * (0.8 * rand::random::<f32>() + 0.2),
             color: [c(), c(), c(), c()].into(),
         }
+    }
+    pub fn perform_step(bodies: &mut [Body]) {
+        let mut vels_accels: Vec<[Vector3<f32>; 2]> = bodies
+            .iter()
+            .map(|body| body.compute_vel_accel(&bodies))
+            .collect();
+        let total_mass: f32 = bodies.iter().map(|b| b.radius.powi(3)).sum();
+        let total_momentum: Vector3<f32> = bodies
+            .iter()
+            .zip(&vels_accels)
+            .map(|(b, [v, _])| b.radius.powi(3) * v)
+            .sum();
+        vels_accels
+            .iter_mut()
+            .for_each(|[v, _]| *v -= total_momentum / total_mass);
+        bodies
+            .iter_mut()
+            .zip(vels_accels)
+            .for_each(|(b, va)| b.step_using_vel_accel(va));
     }
     pub fn pos(&self) -> Vector3<f32> {
         self.pos
@@ -38,7 +63,7 @@ impl Body {
     pub fn color(&self) -> Vector4<f32> {
         self.color
     }
-    pub fn update(&self, others: &[Body]) -> Body {
+    fn compute_vel_accel(&self, others: &[Body]) -> [Vector3<f32>; 2] {
         let dt = PHYSICS_DELTA_TIME.as_secs_f32();
         let mut accel = Vector3::zero();
         for body in others {
@@ -60,11 +85,15 @@ impl Body {
             // Gravitational interaction
             accel += GRAVITY_CONSTANT * body.radius.powi(3) / distance.powi(2) * rel_pos_norm;
         }
-        Body {
-            pos: self.pos + self.vel * dt + accel * dt * dt / 2.0,
-            vel: self.vel + accel * dt,
-            radius: self.radius,
-            color: self.color,
+        let mut vel = self.vel;
+        if self.pos.magnitude2() > SYSTEM_RADIUS.powi(2) && vel.dot(self.pos) > 0.0 {
+            vel *= -0.99;
         }
+        [vel, accel]
+    }
+    fn step_using_vel_accel(&mut self, [vel, accel]: [Vector3<f32>; 2]) {
+        let dt = PHYSICS_DELTA_TIME.as_secs_f32();
+        self.pos = self.pos + vel * dt + accel * dt * dt / 2.0;
+        self.vel = vel + accel * dt;
     }
 }

@@ -17,6 +17,7 @@ use winit::{
 
 pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
     let mut camera = Camera::new();
+
     let mut bodies: Vec<Body> = (0..BODIES).into_iter().map(|_| Body::initial()).collect();
     let mut capture_mouse = false;
     let mut slow_mode = false;
@@ -73,15 +74,14 @@ pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
                 WindowEvent::KeyboardInput {
                     input:
                         KeyboardInput {
-                            virtual_keycode:
-                                Some(vk @ (VirtualKeyCode::Plus | VirtualKeyCode::Minus)),
+                            virtual_keycode: Some(vk @ (VirtualKeyCode::Up | VirtualKeyCode::Down)),
                             state: ElementState::Pressed,
                             ..
                         },
                     ..
                 } => graphics.change_ray_splits(match vk {
-                    VirtualKeyCode::Plus => 1,
-                    VirtualKeyCode::Minus => -1,
+                    VirtualKeyCode::Up => 1,
+                    VirtualKeyCode::Down => -1,
                     _ => unreachable!(),
                 }),
                 WindowEvent::MouseInput {
@@ -134,7 +134,7 @@ pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
                     control_flow.set_exit();
                 }
                 while now.checked_duration_since(physics_timestamp) > Some(PHYSICS_DELTA_TIME) {
-                    bodies = bodies.iter().map(|body| body.update(&bodies)).collect();
+                    Body::perform_step(&mut bodies);
                     physics_timestamp += PHYSICS_DELTA_TIME;
                 }
                 window.request_redraw();

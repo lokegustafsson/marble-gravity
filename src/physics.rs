@@ -1,9 +1,9 @@
-use cgmath::{prelude::*, Vector3, Vector4};
+use cgmath::{prelude::*, Vector3};
 use rand_distr::Distribution;
 use std::time::Duration;
 
 pub const PHYSICS_DELTA_TIME: Duration = Duration::from_millis(1);
-pub const BODIES: u32 = 170;
+pub const BODIES: u32 = 256;
 const GRAVITY_CONSTANT: f32 = 80.0;
 const GAP: f32 = 0.001;
 const STIFFNESS: f32 = 1.0;
@@ -15,13 +15,10 @@ pub struct Body {
     pos: Vector3<f32>,
     vel: Vector3<f32>,
     radius: f32,
-    color: Vector4<f32>,
+    color: u32,
 }
 impl Body {
     pub fn initial() -> Body {
-        fn c() -> f32 {
-            rand::random::<f32>()
-        }
         let mut normal = rand_distr::Normal::new(0.0f32, 1.0)
             .unwrap()
             .sample_iter(rand::thread_rng());
@@ -32,7 +29,7 @@ impl Body {
             pos,
             vel: 0.1 * pos.cross(rand),
             radius: 0.03 * (0.8 * rand::random::<f32>() + 0.2),
-            color: [c(), c(), c(), c()].into(),
+            color: rand::random(),
         }
     }
     pub fn perform_step(bodies: &mut [Body]) {
@@ -60,7 +57,7 @@ impl Body {
     pub fn radius(&self) -> f32 {
         self.radius
     }
-    pub fn color(&self) -> Vector4<f32> {
+    pub fn color(&self) -> u32 {
         self.color
     }
     fn compute_vel_accel(&self, others: &[Body]) -> [Vector3<f32>; 2] {

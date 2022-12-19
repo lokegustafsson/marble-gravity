@@ -1,14 +1,14 @@
 #version 450
 
 // Note that the rust side includes 8 bytes padding at the end which is implicit here
-// Buffer items need their size to be a multiple of 16 bytes. This struct is 48 bytes.
+// Buffer items need their size to be a multiple of 16 bytes. This struct is 32 bytes.
 struct Body {
     vec3 pos;
     float radius;
-    vec4 color;
     int left;
     int right;
-    vec2 padding;
+    uint color;
+    uint padding;
 };
 // Internal structs
 struct HitReport {
@@ -24,7 +24,7 @@ struct Rays {
 
 
 // Constants ===
-const uint BODIES = 170;
+const uint BODIES = 256;
 const int STACK_SIZE = 20;
 const vec4 RED = vec4(1,0,0,1);
 const int NO_HIT = -1;
@@ -62,6 +62,8 @@ float hit_time(const vec3 from, const vec3 ray, const uint body);
 HitReport cast_ray(const vec3 from, const vec3 ray);
 vec3 refract3(vec3 incident, vec3 normal, float eta);
 Rays ray_tracing_data(const vec3 normal, const vec3 ray, const uint hit_id);
+float color_w(const uint color);
+vec3 color_xyz(const uint color);
 vec3 split0_ray(const vec3 from, const vec3 ray);
 vec3 split1_ray(const vec3 from, const vec3 ray);
 vec3 split2_ray(const vec3 from, const vec3 ray);
@@ -90,6 +92,15 @@ void fs_main() {
 void main() {
     fs_main();
 }
+float color_w(const uint color) {
+    return float(color & 0xFF) / 0xFF;
+}
+vec3 color_xyz(const uint color) {
+    uint r = (color >> 24) & 0xFF;
+    uint g = (color >> 16) & 0xFF;
+    uint b = (color >> 8) & 0xFF;
+    return vec3(float(r) / 0xFF, float(g) / 0xFF, float(b) / 0xFF);
+}
 
 vec3 split4_ray(const vec3 from, const vec3 ray) {
     const HitReport hit = cast_ray(from, ray);
@@ -97,9 +108,9 @@ vec3 split4_ray(const vec3 from, const vec3 ray) {
         return background_light(ray);
     }
     const Rays next = ray_tracing_data(hit.normal, ray, hit.id);
-    const float opacity = bodies[hit.id].color.w;
+    const float opacity = color_w(bodies[hit.id].color);
 
-    vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
+    vec3 light = AMBIENT * opacity * color_xyz(bodies[hit.id].color); // Ambient
     light += opacity * split3_ray(next.reflected_pos, next.reflected_ray); // Reflected
     light += (1 - opacity) * split3_ray(next.refracted_pos, next.refracted_ray); // Refracted
     return light;
@@ -110,9 +121,9 @@ vec3 split3_ray(const vec3 from, const vec3 ray) {
         return background_light(ray);
     }
     const Rays next = ray_tracing_data(hit.normal, ray, hit.id);
-    const float opacity = bodies[hit.id].color.w;
+    const float opacity = color_w(bodies[hit.id].color);
 
-    vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
+    vec3 light = AMBIENT * opacity * color_xyz(bodies[hit.id].color); // Ambient
     light += opacity * split2_ray(next.reflected_pos, next.reflected_ray); // Reflected
     light += (1 - opacity) * split2_ray(next.refracted_pos, next.refracted_ray); // Refracted
     return light;
@@ -123,9 +134,9 @@ vec3 split2_ray(const vec3 from, const vec3 ray) {
         return background_light(ray);
     }
     const Rays next = ray_tracing_data(hit.normal, ray, hit.id);
-    const float opacity = bodies[hit.id].color.w;
+    const float opacity = color_w(bodies[hit.id].color);
 
-    vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
+    vec3 light = AMBIENT * opacity * color_xyz(bodies[hit.id].color); // Ambient
     light += opacity * split1_ray(next.reflected_pos, next.reflected_ray); // Reflected
     light += (1 - opacity) * split1_ray(next.refracted_pos, next.refracted_ray); // Refracted
     return light;
@@ -136,9 +147,9 @@ vec3 split1_ray(const vec3 from, const vec3 ray) {
         return background_light(ray);
     }
     const Rays next = ray_tracing_data(hit.normal, ray, hit.id);
-    const float opacity = bodies[hit.id].color.w;
+    const float opacity = color_w(bodies[hit.id].color);
 
-    vec3 light = AMBIENT * opacity * bodies[hit.id].color.xyz; // Ambient
+    vec3 light = AMBIENT * opacity * color_xyz(bodies[hit.id].color); // Ambient
     light += opacity * split0_ray(next.reflected_pos, next.reflected_ray); // Reflected
     light += (1 - opacity) * split0_ray(next.refracted_pos, next.refracted_ray); // Refracted
     return light;
@@ -175,8 +186,8 @@ vec3 split0_ray(const vec3 from, const vec3 ray) {
     }
     const vec3 normal = hit.normal;
     const vec3 hit_point = bodies[hit.id].pos + (1 + EPSILON) * bodies[hit.id].radius * normal;
-    const vec3 color = bodies[hit.id].color.xyz;
-    const float opacity = bodies[hit.id].color.w;
+    const vec3 color = color_xyz(bodies[hit.id].color);
+    const float opacity = color_w(bodies[hit.id].color);
 
     // Ambient
     vec3 light = AMBIENT * opacity * color;

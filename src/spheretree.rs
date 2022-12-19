@@ -1,5 +1,5 @@
 use crate::Body;
-use cgmath::{prelude::*, Matrix4, Vector3, Vector4};
+use cgmath::{prelude::*, Matrix4, Vector3};
 use std::iter::repeat;
 
 pub fn make_sphere_tree(bodies: &[Body], world_to_camera: Matrix4<f32>) -> Vec<Sphere> {
@@ -72,10 +72,10 @@ fn measure(a: &Sphere, b: &Sphere) -> f32 {
 pub struct Sphere {
     pos: Vector3<f32>,
     radius: f32,
-    color: Vector4<f32>,
     left: i32,
     right: i32,
-    _padding: [u8; 8], // Bump to 48 bytes to satisfy multiple of 16 bytes criteria
+    color: u32,
+    _padding: u32, // Bump to 32 bytes to satisfy multiple of 16 bytes criteria
 }
 impl Sphere {
     pub(self) fn leaf(body: &Body, world_to_camera: &Matrix4<f32>) -> Self {
@@ -84,10 +84,10 @@ impl Sphere {
         Self {
             pos: hom_pos.truncate() / w,
             radius: body.radius(),
-            color: body.color(),
             left: -1,
             right: -1,
-            _padding: [0; 8],
+            color: body.color(),
+            _padding: 0,
         }
     }
     pub(self) fn branch(a_index: usize, b_index: usize, spheres: &[Option<Sphere>]) -> Self {
@@ -101,20 +101,20 @@ impl Sphere {
         Self {
             pos: joined_midpoint,
             radius: joined_radius,
-            color: Vector4::zero(),
             left: a_index as i32,
             right: b_index as i32,
-            _padding: [0; 8],
+            color: 0,
+            _padding: 0,
         }
     }
     pub(self) fn placeholder() -> Self {
         Self {
             pos: Vector3::zero(),
             radius: 0.0,
-            color: Vector4::zero(),
             left: 0,
             right: 0,
-            _padding: [0; 8],
+            color: 0,
+            _padding: 0,
         }
     }
 }

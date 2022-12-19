@@ -1,7 +1,10 @@
 use crate::{physics::BODIES, spheretree::Sphere};
 use cgmath::{prelude::*, Quaternion, Vector2, Vector3};
 use instant::Instant;
-use std::{mem, time::Duration};
+use std::{collections::VecDeque, mem};
+
+const FRAME_TIME_HISTORY_COUNT: usize = 100;
+const FRAME_TIME_PERCENTILE: f32 = 0.6;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -39,9 +42,11 @@ pub struct Graphics {
     uniforms: Uniforms,
     uniforms_are_new: bool,
     render_tasks: wgpu::RenderBundle,
+    staging_belt: wgpu::util::StagingBelt,
+    glyph_brush: wgpu_glyph::GlyphBrush<()>,
     window_size: (u32, u32),
-    fps_latest_print: Instant,
-    fps_frame_count: u32,
+    fps_latest_instant: Instant,
+    fps_recent_frame_time: VecDeque<f32>,
 }
 impl Graphics {
     pub async fn initialize(
@@ -71,6 +76,14 @@ impl Graphics {
 
         let render_tasks = make_render_tasks(&parameters, &device, &body_buffer, &uniforms_buffer);
 
+        let font = wgpu_glyph::ab_glyph::FontArc::try_from_slice(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/Roboto-Regular-Digits.ttf"
+        )))
+        .unwrap();
+        let glyph_brush = wgpu_glyph::GlyphBrushBuilder::using_font(font)
+            .build(&device, parameters.texture_format);
+
         Self {
             parameters,
             queue,
@@ -81,9 +94,11 @@ impl Graphics {
             uniforms,
             uniforms_are_new: true,
             render_tasks,
+            staging_belt: wgpu::util::StagingBelt::new(1024),
+            glyph_brush,
             window_size: size,
-            fps_latest_print: Instant::now(),
-            fps_frame_count: 0,
+            fps_latest_instant: Instant::now(),
+            fps_recent_frame_time: std::iter::once(0.01).collect(),
         }
     }
     pub fn change_ray_splits(&mut self, delta: i8) {
@@ -195,21 +210,53 @@ impl Graphics {
                 })
                 .execute_bundles(std::iter::once(&self.render_tasks));
 
+            self.glyph_brush.queue(wgpu_glyph::Section {
+                screen_position: (5.0, 5.0),
+                bounds: (self.window_size.0 as f32, self.window_size.1 as f32),
+                text: vec![wgpu_glyph::Text::new({
+                    let fps = 1.0
+                        / *self
+                            .fps_recent_frame_time
+                            .clone()
+                            .make_contiguous()
+                            .select_nth_unstable_by(
+                                (self.fps_recent_frame_time.len() as f32 * FRAME_TIME_PERCENTILE)
+                                    as usize,
+                                f32::total_cmp,
+                            )
+                            .1;
+                    let precision = (2 - fps.log10().ceil() as isize).max(0) as usize;
+                    &format!("{:.1$}", fps, precision)
+                })
+                .with_color([0.5, 0.5, 0.5, 1.0])
+                .with_scale(32.0)],
+                layout: wgpu_glyph::Layout::default_single_line(),
+            });
+            self.glyph_brush
+                .draw_queued(
+                    &self.device,
+                    &mut self.staging_belt,
+                    &mut encoder,
+                    surface_texture_view,
+                    self.window_size.0,
+                    self.window_size.1,
+                )
+                .unwrap();
+            self.staging_belt.finish();
+
             self.queue.submit(std::iter::once(encoder.finish()));
             surface_texture.present();
+            self.staging_belt.recall();
         }
         {
             let now = Instant::now();
-            let span = now.duration_since(self.fps_latest_print);
-            if span > Duration::from_secs(1) {
-                let fps = self.fps_frame_count as f64 / span.as_secs_f64();
-                let precision = (2 - fps.log10().ceil() as isize).max(0) as usize;
-                log::info!("{:.1$} FPS", fps, precision);
-                self.fps_latest_print = now;
-                self.fps_frame_count = 1;
-            } else {
-                self.fps_frame_count += 1;
+            let frame_time = now.duration_since(self.fps_latest_instant).as_secs_f32();
+            self.fps_latest_instant = now;
+
+            while self.fps_recent_frame_time.len() > FRAME_TIME_HISTORY_COUNT {
+                self.fps_recent_frame_time.pop_front();
             }
+            self.fps_recent_frame_time.push_back(frame_time);
         }
     }
 }

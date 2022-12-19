@@ -65,10 +65,10 @@
             cargo2nix.outputs.packages.${system}.cargo2nix
             p.cargo-flamegraph
             p.cargo-outdated
+            p.fontforge-gtk
             p.rust-bin.stable.latest.clippy
             wasm.wasm-bindgen
           ]; # ++ builtins.attrValues rust.packages;
-          FOO = "${pkgs.gperftools}";
         };
 
         packages = rust.packages // { default = rust.packages.marble-gravity; };
@@ -82,7 +82,7 @@
                   ./target/wasm32-unknown-unknown/release/marble_gravity.wasm \
                   --no-typescript --out-dir ./target/webpage/ \
                   --keep-debug
-                cp index.html ./target/webpage/
+                cp ./assets/index.html ./target/webpage/
                 cd ./target/webpage && python -m http.server 8080
               '';
             in "${script}";

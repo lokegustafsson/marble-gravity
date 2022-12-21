@@ -1,21 +1,33 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-compat = {
+      url = "github:edolstra/flake-compat";
+      flake = false;
+    };
     flake-utils.url = "github:numtide/flake-utils";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
     cargo2nix = {
       url = "github:cargo2nix/cargo2nix";
-      inputs.rust-overlay.follows = "rust-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-compat.follows = "flake-compat";
       inputs.flake-utils.follows = "flake-utils";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.rust-overlay.follows = "rust-overlay";
+    };
+    crane = {
+      url = "github:ipetkov/crane";
+      inputs.flake-compat.follows = "flake-compat";
+      inputs.flake-utils.follows = "flake-utils";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.rust-overlay.follows = "rust-overlay";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, cargo2nix }:
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, cargo2nix, crane, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -54,7 +66,8 @@
             })
           ];
         };
-        wasm = import ./wasm.nix { inherit system cargo2nix nixpkgs pkgs; };
+        wasm =
+          import ./wasm.nix { inherit system cargo2nix crane nixpkgs pkgs lib; };
       in {
         devShells.default = rust.rustPkgs.workspaceShell {
           packages = let p = pkgs;
@@ -71,19 +84,16 @@
           ]; # ++ builtins.attrValues rust.packages;
         };
 
-        packages = rust.packages // { default = rust.packages.marble-gravity; };
+        packages = rust.packages // {
+          default = rust.packages.marble-gravity;
+          webpage = wasm.webpage;
+        };
         apps = rec {
           serve = {
             type = "app";
             program = let
               script = pkgs.writeShellScript "serve" ''
-                cargo build --release --target wasm32-unknown-unknown
-                wasm-bindgen --target web \
-                  ./target/wasm32-unknown-unknown/release/marble_gravity.wasm \
-                  --no-typescript --out-dir ./target/webpage/ \
-                  --keep-debug
-                cp ./assets/index.html ./target/webpage/
-                cd ./target/webpage && python -m http.server 8080
+                cd ${wasm.webpage} && python -m http.server 8080
               '';
             in "${script}";
           };

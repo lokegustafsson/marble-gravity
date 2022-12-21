@@ -1,4 +1,4 @@
-{ system, cargo2nix, nixpkgs, pkgs }:
+{ system, cargo2nix, crane, nixpkgs, pkgs, lib }:
 let
   wasmPkgs = import nixpkgs {
     inherit system;
@@ -24,26 +24,41 @@ let
     cargoTestFlags = [ "--test=interface-types" ];
   };
 
-  webpage = derivation {
-    name = "marble-gravity-webpage";
-    builder = pkgs.bash;
-    src = ./index.html;
+  webpage = let
+    craneLib = (crane.mkLib pkgs).overrideToolchain
+      (pkgs.rust-bin.stable.latest.default.override {
+        targets = [ "wasm32-unknown-unknown" ];
+      });
+    craneWasm = craneLib.buildPackage {
+      src = lib.cleanSourceWith {
+        src = ./.;
+        filter = path: type:
+          (craneLib.filterCargoSources path type
+            || (builtins.match ".*/assets/.*\\.ttf$" path) != null
+            || (builtins.match ".*/src/.*\\.(frag|vert)$" path) != null);
+      };
+      cargoLock = ./Cargo.lock;
+      cargoToml = ./Cargo.toml;
+      cargoExtraArgs = "--target wasm32-unknown-unknown";
+      doCheck = false;
+      buildInputs = [ ];
+    };
+  in derivation {
+    name = "marble-gravity";
+    builder = "${pkgs.bash}/bin/bash";
+    src = craneWasm;
+    inherit system;
     args = [
       "-c"
       ''
-        export PATH="$coreutils/bin:$wasm-bindgen/bin"
-        echo $w2
-        echo $wasm
-        wasm-bindgen --target web $wasm --no-typescript --out-dir $out
-        cp $src $out/
+        export PATH="$coreutils/bin:$wasmbindgen/bin"
+        wasm-bindgen --target web $src/lib/marble_gravity.wasm \
+          --no-typescript --out-dir $out/
+        cp $indexhtml $out/index.html
       ''
     ];
-    inherit system wasm-bindgen;
-    wasm = ((wasmPkgs.rustBuilder.makePackageSet {
-      rustVersion = "latest";
-      packageFun = import ./Cargo.nix;
-      target = "wasm32-wasi";
-    }).workspace.marble-gravity { }).out;
+    indexhtml = ./assets/index.html;
     coreutils = pkgs.coreutils;
+    wasmbindgen = wasm-bindgen;
   };
 in { inherit webpage wasm-bindgen; }

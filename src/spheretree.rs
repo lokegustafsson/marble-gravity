@@ -79,14 +79,14 @@ pub struct Sphere {
 }
 impl Sphere {
     pub(self) fn leaf(body: &Body, world_to_camera: &Matrix4<f32>) -> Self {
-        let hom_pos = world_to_camera * body.pos().extend(1.0);
+        let hom_pos = world_to_camera * body.pos.extend(1.0);
         let w = hom_pos.w;
         Self {
             pos: hom_pos.truncate() / w,
-            radius: body.radius(),
+            radius: body.radius,
             left: -1,
             right: -1,
-            color: body.color(),
+            color: body.color,
             _padding: 0,
         }
     }

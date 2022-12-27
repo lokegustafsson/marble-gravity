@@ -26,7 +26,8 @@ let
 
   webpage = let
     craneLib = (crane.mkLib pkgs).overrideToolchain
-      (pkgs.rust-bin.stable.latest.default.override {
+      (pkgs.rust-bin.nightly.latest.default.override {
+        extensions = [ "rust-src" ];
         targets = [ "wasm32-unknown-unknown" ];
       });
     craneWasm = craneLib.buildPackage {
@@ -35,7 +36,7 @@ let
         filter = path: type:
           (craneLib.filterCargoSources path type
             || (builtins.match ".*/assets/.*\\.ttf$" path) != null
-            || (builtins.match ".*/src/.*\\.(frag|vert)$" path) != null);
+            || (builtins.match ".*/src/.*\\.(frag|vert|wgsl)$" path) != null);
       };
       cargoLock = ./Cargo.lock;
       cargoToml = ./Cargo.toml;
@@ -55,9 +56,11 @@ let
         wasm-bindgen --target web $src/lib/marble_gravity.wasm \
           --no-typescript --out-dir $out/
         cp $indexhtml $out/index.html
+        cp $polyfill $out/module-workers-polyfill.js
       ''
     ];
     indexhtml = ./assets/index.html;
+    polyfill = ./assets/module-workers-polyfill.js;
     coreutils = pkgs.coreutils;
     wasmbindgen = wasm-bindgen;
   };

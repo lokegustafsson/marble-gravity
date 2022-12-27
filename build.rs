@@ -39,7 +39,7 @@ fn main() {
 
     for shader in shaders {
         let name = shader.path.to_str().unwrap();
-        println!("cargo:warning=Compiling shader {}", name);
+        println!("cargo:warning=Compiling shader {name}");
 
         let module = parser
             .parse(
@@ -62,7 +62,7 @@ fn main() {
             ShaderStage::Compute => "comp",
         };
         fs::write(
-            shader.path.with_extension(format!("{}.wgsl", extension)),
+            shader.path.with_extension(format!("{extension}.wgsl")),
             compiled.as_bytes(),
         )
         .unwrap();
@@ -133,9 +133,9 @@ impl CompiledShaders {
         let entries: Vec<String> = self
             .0
             .into_iter()
-            .map(|(path, digest)| format!("{} {}", path.to_str().unwrap(), digest))
+            .map(|(path, digest)| format!("{} {digest}", path.to_str().unwrap()))
             .collect();
-        fs::write("shader_checksums.txt", &entries.join("\n")).unwrap();
+        fs::write("shader_checksums.txt", entries.join("\n")).unwrap();
     }
     pub fn has_new_checksum(&mut self, shader: &ShaderData) -> bool {
         let digest = format!("{:?}", blake3::hash(shader.source.as_bytes()));

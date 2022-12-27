@@ -10,12 +10,13 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-bytemuck = "1"
+bytemuck = { version = "1", features = ["extern_crate_alloc"] }
 cgmath = "0.18"
 instant = "0.1"
 log = "0.4"
 rand = "0.8"
 rand_distr = "0.4"
+rayon = "1"
 wgpu = { version = "0.14" }
 wgpu_glyph = "0.18"
 winit = "0.27"
@@ -29,14 +30,26 @@ console_error_panic_hook = "0.1"
 console_log = "0.2.0"
 getrandom = { version = "0.2", features = ["js"] }
 instant = { version = "0.1", features = ["wasm-bindgen"] }
+js-sys = "0.3"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
+wasm-bindgen-rayon = "1"
 wgpu = { version = "0.14", features = ["webgl"]}
 web-sys = { version = "0.3", features = [
     "Document",
     "Window",
     "Element",
 ]}
+addr2line = "=0.17.0"
+cc = "=1.0.76"
+compiler_builtins = "0.1"
+dlmalloc = "=0.2.3"
+fortanix-sgx-abi = "0.5"
+getopts = "0.2"
+gimli = "0.26.1"
+miniz_oxide = "=0.5.3"
+object = "=0.29.0"
+rustc-demangle = "0.1"
 
 [build-dependencies]
 blake3 = "1"

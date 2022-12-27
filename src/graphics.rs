@@ -226,7 +226,7 @@ impl Graphics {
                             )
                             .1;
                     let precision = (2 - fps.log10().ceil() as isize).max(0) as usize;
-                    &format!("{:.1$}", fps, precision)
+                    &format!("{fps:.precision$}")
                 })
                 .with_color([0.5, 0.5, 0.5, 1.0])
                 .with_scale(32.0)],

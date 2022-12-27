@@ -1,6 +1,7 @@
 use crate::{
     camera::Camera,
     graphics::Graphics,
+    nbody::NBodyResult,
     physics::{Body, BODIES, PHYSICS_DELTA_TIME},
     spheretree, PHYSICS_MAX_BEHIND_TIME,
 };
@@ -15,7 +16,15 @@ use winit::{
     window::{CursorGrabMode, Window},
 };
 
-pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
+struct Stats {
+    frame_number: u64,
+    tick_number: u64,
+    instant_start: Instant,
+    time_spent_in_physics: Duration,
+    time_spent_in_graphics: Duration,
+}
+
+pub fn run(event_loop: EventLoop<NBodyResult>, window: Window, mut graphics: Graphics) {
     let mut camera = Camera::new();
 
     let mut bodies: Vec<Body> = (0..BODIES).into_iter().map(|_| Body::initial()).collect();
@@ -35,6 +44,15 @@ pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
     let mut physics_timestamp = last_frame_processing_begun_instant;
     let mut camera_timestamp = last_frame_processing_begun_instant;
 
+    let mut stats = Stats {
+        frame_number: 0,
+        tick_number: 0,
+        instant_start: Instant::now(),
+        time_spent_in_physics: Duration::ZERO,
+        time_spent_in_graphics: Duration::ZERO,
+    };
+
+    let proxy = event_loop.create_proxy();
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
         match event {
@@ -127,16 +145,14 @@ pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
                 last_frame_processing_begun_instant = now;
 
                 if now.checked_duration_since(physics_timestamp) > Some(PHYSICS_MAX_BEHIND_TIME) {
+                    let new_physics_timestamp = now.checked_sub(PHYSICS_DELTA_TIME).unwrap();
                     log::error!(
-                        "Physics computation too far behind ({}ms). Exiting..",
-                        PHYSICS_MAX_BEHIND_TIME.as_millis()
+                        "Physics computation far behind, dropping {}ms",
+                        (new_physics_timestamp - physics_timestamp).as_millis()
                     );
-                    control_flow.set_exit();
+                    physics_timestamp = new_physics_timestamp;
                 }
-                while now.checked_duration_since(physics_timestamp) > Some(PHYSICS_DELTA_TIME) {
-                    Body::perform_step(&mut bodies);
-                    physics_timestamp += PHYSICS_DELTA_TIME;
-                }
+                NBodyResult::spawn_compute_accels(&bodies, proxy.clone());
                 window.request_redraw();
             }
             Event::RedrawRequested(_window_id) => {
@@ -152,12 +168,37 @@ pub fn run(event_loop: EventLoop<()>, window: Window, mut graphics: Graphics) {
                         graphics.resize(size);
                     }
                 }
+                let instant_pre_graphics = Instant::now();
                 graphics.render(
                     spheretree::make_sphere_tree(&bodies, camera.world_to_camera()),
                     camera.rotation(),
                 );
+                stats.time_spent_in_graphics += Instant::now().duration_since(instant_pre_graphics);
+                stats.frame_number += 1;
+                if stats.frame_number.is_power_of_two() || stats.frame_number % 1000 == 0 {
+                    log::info!(
+                        "Elapsed {}s total, {}s physics ({} ticks), {}s graphics ({} frames)",
+                        Instant::now().duration_since(stats.instant_start).as_secs(),
+                        stats.time_spent_in_physics.as_secs(),
+                        stats.tick_number,
+                        stats.time_spent_in_graphics.as_secs(),
+                        stats.frame_number,
+                    );
+                }
                 control_flow
                     .set_wait_until(last_frame_processing_begun_instant + desired_frame_time);
+            }
+            Event::UserEvent(NBodyResult { accels, time_spent }) => {
+                stats.time_spent_in_physics += time_spent;
+                stats.tick_number += 1;
+                Body::perform_step(&mut bodies, accels);
+                physics_timestamp += PHYSICS_DELTA_TIME;
+
+                if Instant::now().checked_duration_since(physics_timestamp)
+                    > Some(PHYSICS_DELTA_TIME)
+                {
+                    NBodyResult::spawn_compute_accels(&bodies, proxy.clone());
+                }
             }
             _ => {}
         }

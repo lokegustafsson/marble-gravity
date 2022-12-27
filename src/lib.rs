@@ -1,5 +1,6 @@
 mod camera;
 mod graphics;
+mod nbody;
 mod physics;
 mod run;
 mod spheretree;
@@ -13,7 +14,7 @@ use winit::{event_loop::EventLoopBuilder, window::WindowBuilder};
 
 const PHYSICS_MAX_BEHIND_TIME: Duration = Duration::from_secs(1);
 
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen(start))]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen)]
 pub fn start() {
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -76,6 +77,7 @@ async fn setup_and_run() {
     };
 
     let graphics = Graphics::initialize(parameters, surface, device_and_queue, size).await;
+
     log::info!("Starting event loop");
     run::run(event_loop, window, graphics);
 }

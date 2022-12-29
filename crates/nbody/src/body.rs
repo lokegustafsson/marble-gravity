@@ -1,4 +1,4 @@
-use crate::nbody::Accel;
+use crate::Accel;
 use cgmath::{prelude::*, Vector3};
 use rand_distr::Distribution;
 use std::time::Duration;

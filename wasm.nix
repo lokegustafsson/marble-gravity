@@ -30,7 +30,7 @@ let
         extensions = [ "rust-src" ];
         targets = [ "wasm32-unknown-unknown" ];
       });
-    craneWasm = craneLib.buildPackage {
+    mainWasm = craneLib.buildPackage {
       src = lib.cleanSourceWith {
         src = ./.;
         filter = path: type:
@@ -39,27 +39,43 @@ let
             || (builtins.match ".*/src/.*\\.(frag|vert|wgsl)$" path) != null);
       };
       cargoLock = ./Cargo.lock;
-      cargoToml = ./Cargo.toml;
-      cargoExtraArgs = "--target wasm32-unknown-unknown";
+      cargoToml = ./crates/marble-gravity/Cargo.toml;
+      cargoExtraArgs = "--package marble-gravity --target wasm32-unknown-unknown";
+      doCheck = false;
+      buildInputs = [ ];
+    };
+    workerWasm = craneLib.buildPackage {
+      src = lib.cleanSourceWith {
+        src = ./.;
+        filter = craneLib.filterCargoSources;
+      };
+      cargoLock = ./Cargo.lock;
+      cargoToml = ./crates/nbody/Cargo.toml;
+      cargoExtraArgs = "--package nbody --target wasm32-unknown-unknown --features inner";
       doCheck = false;
       buildInputs = [ ];
     };
   in derivation {
     name = "marble-gravity";
     builder = "${pkgs.bash}/bin/bash";
-    src = craneWasm;
-    inherit system;
+    inherit system mainWasm workerWasm;
     args = [
       "-c"
       ''
         export PATH="$coreutils/bin:$wasmbindgen/bin"
-        wasm-bindgen --target web $src/lib/marble_gravity.wasm \
+        wasm-bindgen --target web $mainWasm/lib/marble_gravity.wasm \
+          --no-typescript --out-dir $out/
+        wasm-bindgen --target web $workerWasm/lib/nbody.wasm \
           --no-typescript --out-dir $out/
         cp $indexhtml $out/index.html
+        cp $computejs $out/compute.js
+        cp $workerjs $out/worker.js
         cp $polyfill $out/module-workers-polyfill.js
       ''
     ];
     indexhtml = ./assets/index.html;
+    computejs = ./assets/compute.js;
+    workerjs = ./assets/worker.js;
     polyfill = ./assets/module-workers-polyfill.js;
     coreutils = pkgs.coreutils;
     wasmbindgen = wasm-bindgen;

@@ -6,9 +6,8 @@ use naga::{
 use std::{collections::HashMap, env, fs, path::PathBuf};
 
 fn main() {
-    let root_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let src_dir = &root_dir.join("src/");
-    let out_dir = &root_dir.join("target/");
+    let src_dir = &PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("src/");
+    let out_dir = &PathBuf::from(env::var("OUT_DIR").unwrap());
 
     // Find already compiled
     env::set_current_dir(out_dir).unwrap();

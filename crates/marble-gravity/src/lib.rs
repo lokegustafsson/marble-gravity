@@ -1,14 +1,9 @@
 mod camera;
 mod graphics;
-mod nbody;
-mod physics;
 mod run;
 mod spheretree;
 
-use crate::{
-    graphics::{Graphics, Parameters},
-    physics::Body,
-};
+use crate::graphics::{Graphics, Parameters};
 use std::time::Duration;
 use winit::{event_loop::EventLoopBuilder, window::WindowBuilder};
 
@@ -25,13 +20,15 @@ pub fn start() {
     {
         std::panic::set_hook(Box::new(console_error_panic_hook::hook));
         console_log::init_with_level(log::Level::Info).unwrap();
+        log::info!("START");
         wasm_bindgen_futures::spawn_local(setup_and_run());
     }
 }
 
 async fn setup_and_run() {
     log::info!("Setting up");
-    let instance = wgpu::Instance::new(wgpu::Backends::all());
+    let instance =
+        wgpu::Instance::new(wgpu::util::backend_bits_from_env().unwrap_or(wgpu::Backends::all()));
     let event_loop = EventLoopBuilder::with_user_event().build();
     let window = WindowBuilder::new()
         .with_title("Marble Gravity")
@@ -51,7 +48,7 @@ async fn setup_and_run() {
         js_window
             .document()
             .and_then(|doc| {
-                let dst = doc.get_element_by_id("wasm")?;
+                let dst = doc.get_element_by_id("canvas")?;
                 let canvas = web_sys::Element::from(window.canvas());
                 dst.append_child(&canvas).ok()?;
                 Some(())

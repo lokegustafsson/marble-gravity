@@ -1,6 +1,7 @@
-use crate::{physics::BODIES, spheretree::Sphere};
+use crate::spheretree::Sphere;
 use cgmath::{prelude::*, Quaternion, Vector2, Vector3};
 use instant::Instant;
+use nbody::BODIES;
 use std::{collections::VecDeque, mem};
 
 const FRAME_TIME_HISTORY_COUNT: usize = 100;
@@ -78,7 +79,7 @@ impl Graphics {
 
         let font = wgpu_glyph::ab_glyph::FontArc::try_from_slice(include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/assets/Roboto-Regular-Digits.ttf"
+            "/../../assets/Roboto-Regular-Digits.ttf"
         )))
         .unwrap();
         let glyph_brush = wgpu_glyph::GlyphBrushBuilder::using_font(font)
@@ -367,10 +368,14 @@ fn make_pipeline(
         push_constant_ranges: &[],
     });
 
-    let vertex_module =
-        device.create_shader_module(wgpu::include_wgsl!("../target/shader.vert.wgsl"));
-    let fragment_module =
-        device.create_shader_module(wgpu::include_wgsl!("../target/shader.frag.wgsl"));
+    let vertex_module = device.create_shader_module(wgpu::include_wgsl!(concat!(
+        env!("OUT_DIR"),
+        "/shader.vert.wgsl"
+    )));
+    let fragment_module = device.create_shader_module(wgpu::include_wgsl!(concat!(
+        env!("OUT_DIR"),
+        "/shader.frag.wgsl"
+    )));
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Render pipeline"),

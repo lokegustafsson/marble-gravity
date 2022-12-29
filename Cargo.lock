@@ -1066,7 +1066,6 @@ dependencies = [
  "env_logger",
  "fortanix-sgx-abi",
  "getopts",
- "getrandom",
  "gimli",
  "glob",
  "instant",
@@ -1074,16 +1073,12 @@ dependencies = [
  "log",
  "miniz_oxide 0.5.3",
  "naga",
+ "nbody",
  "object 0.29.0",
  "pollster",
- "rand",
- "rand_distr",
- "rayon",
  "rustc-demangle",
- "tokio",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-bindgen-rayon",
  "web-sys",
  "wgpu",
  "wgpu_glyph",
@@ -1192,6 +1187,24 @@ dependencies = [
  "termcolor",
  "thiserror",
  "unicode-xid",
+]
+
+[[package]]
+name = "nbody"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "cgmath",
+ "getrandom",
+ "instant",
+ "js-sys",
+ "rand",
+ "rand_distr",
+ "rayon",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-rayon",
+ "winit",
 ]
 
 [[package]]
@@ -1419,12 +1432,6 @@ name = "percent-encoding"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "478c572c3d73181ff3c2539045f6eb99e5491218eae919370993b890cdbdd98e"
-
-[[package]]
-name = "pin-project-lite"
-version = "0.2.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0a7ae3ac2f1173085d398531c705756c94a4c56843785df85a60c1a0afac116"
 
 [[package]]
 name = "pkg-config"
@@ -1852,17 +1859,6 @@ checksum = "c114d32f0c2ee43d585367cb013dfaba967ab9f62b90d9af0d696e955e70fa6c"
 dependencies = [
  "arrayref",
  "bytemuck",
-]
-
-[[package]]
-name = "tokio"
-version = "1.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eab6d665857cc6ca78d6e80303a02cea7a7851e85dfbd77cbdc09bd129f1ef46"
-dependencies = [
- "autocfg",
- "pin-project-lite",
- "windows-sys 0.42.0",
 ]
 
 [[package]]

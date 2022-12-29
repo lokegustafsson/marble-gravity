@@ -1,5 +1,5 @@
-use crate::Body;
 use cgmath::{prelude::*, Matrix4, Vector3};
+use nbody::Body;
 use std::iter::repeat;
 
 pub fn make_sphere_tree(bodies: &[Body], world_to_camera: Matrix4<f32>) -> Vec<Sphere> {

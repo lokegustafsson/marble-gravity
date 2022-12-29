@@ -1,45 +1,15 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <meta content="text/html;charset=utf-8" http-equiv="Content-Type" />
     <script src="./module-workers-polyfill.js"></script>
   </head>
-  <body>
-    <div id="wasm"></div>
-    <script type="module">
-      let worker = new Worker(
-        window.URL.createObjectURL(
-          new Blob([document.querySelector("#worker").textContent], { type: "module" })
-        )
-      );
-      function computeAccelsOuter(bodies_bytes) {
-        return new Promise((resolve, reject) => {
-          worker.onmessage = (event) => {
-            resolve(event.data);
-          };
-          worker.postMessage(bodies_bytes);
-        });
-      }
+  <body id="canvas">
+    <script async type="module">
       import init, { start } from "./marble_gravity.js";
-      async () => {
-        await init();
-        console.log("WASM Loaded");
-        await start();
-        console.log("WASM Exited");
-      };
-    </script>
-    <script id="worker" type="worker-noexec">
-      import init, { initThreadPool, computeAccelsInner } from "./marble_gravity.js";
-      (async () => {
-        await init();
-        await initThreadPool();
-        self.onmessage = (event) => {
-          const bodies_bytes = event.data;
-          const accels_bytes = await computeAccelsInner(bodies_bytes);
-          self.postMessage(accel_bytes);
-        };
-        console.log("Rayon worker loaded");
-      })();
+      await init();
+      console.log("WASM Loaded");
+      await start();
+      console.log("WASM Exited");
     </script>
   </body>
   <style>

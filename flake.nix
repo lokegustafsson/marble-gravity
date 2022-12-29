@@ -69,21 +69,27 @@
         wasm = import ./wasm.nix {
           inherit system cargo2nix crane nixpkgs pkgs lib;
         };
+        rust-toolchain = (pkgs.rust-bin.nightly.latest.default.override {
+          extensions = [ "rust-src" ];
+          targets = [ "wasm32-unknown-unknown" "x86_64-unknown-linux-gnu" ];
+        });
       in {
         devShells.default = rust.rustPkgs.workspaceShell {
           packages = let p = pkgs;
           in [
-            (p.rust-bin.nightly.latest.default.override {
-              extensions = [ "rust-src" ];
-              targets = [ "wasm32-unknown-unknown" "x86_64-unknown-linux-gnu" ];
-            })
+            rust-toolchain
             cargo2nix.outputs.packages.${system}.cargo2nix
             p.cargo-flamegraph
             p.cargo-outdated
             p.fontforge-gtk
             p.rust-bin.stable.latest.clippy
             wasm.wasm-bindgen
-          ]; # ++ builtins.attrValues rust.packages;
+            (p.writeShellScriptBin "cargo-udeps" ''
+              export RUSTC="${rust-toolchain}/bin/rustc"
+              export CARGO="${rust-toolchain}/bin/cargo"
+              exec "${p.cargo-udeps}/bin/cargo-udeps" "$@"
+            '')
+          ];
         };
 
         packages = rust.packages // {
@@ -95,7 +101,7 @@
             type = "app";
             program = let
               script = pkgs.writeShellScript "serve" ''
-                cd ${wasm.webpage} && python -m http.server 8080
+                python serve.py ${wasm.webpage}
               '';
             in "${script}";
           };

@@ -1,11 +1,6 @@
-use crate::{
-    camera::Camera,
-    graphics::Graphics,
-    nbody::NBodyResult,
-    physics::{Body, BODIES, PHYSICS_DELTA_TIME},
-    spheretree, PHYSICS_MAX_BEHIND_TIME,
-};
+use crate::{camera::Camera, graphics::Graphics, spheretree, PHYSICS_MAX_BEHIND_TIME};
 use instant::Instant;
+use nbody::{Body, NBodyResult, BODIES, PHYSICS_DELTA_TIME};
 use std::time::Duration;
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
@@ -175,7 +170,7 @@ pub fn run(event_loop: EventLoop<NBodyResult>, window: Window, mut graphics: Gra
                 );
                 stats.time_spent_in_graphics += Instant::now().duration_since(instant_pre_graphics);
                 stats.frame_number += 1;
-                if stats.frame_number.is_power_of_two() || stats.frame_number % 1000 == 0 {
+                if stats.frame_number.is_power_of_two() || stats.frame_number % 1024 == 0 {
                     log::info!(
                         "Elapsed {}s total, {}s physics ({} ticks), {}s graphics ({} frames)",
                         Instant::now().duration_since(stats.instant_start).as_secs(),

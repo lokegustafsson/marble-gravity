@@ -2,7 +2,15 @@ use crate::spheretree::Sphere;
 use cgmath::{prelude::*, Quaternion, Vector2, Vector3};
 use instant::Instant;
 use nbody::BODIES;
-use std::{collections::VecDeque, mem};
+use std::{
+    collections::VecDeque,
+    mem,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 const FRAME_TIME_HISTORY_COUNT: usize = 100;
 const FRAME_TIME_PERCENTILE: f32 = 0.6;
@@ -46,8 +54,9 @@ pub struct Graphics {
     staging_belt: wgpu::util::StagingBelt,
     glyph_brush: wgpu_glyph::GlyphBrush<()>,
     window_size: (u32, u32),
+    gpu_busy: Arc<AtomicBool>,
     fps_latest_instant: Instant,
-    fps_recent_frame_time: VecDeque<f32>,
+    fps_recent_frame_and_render_time: VecDeque<[Duration; 2]>,
 }
 impl Graphics {
     pub async fn initialize(
@@ -98,8 +107,10 @@ impl Graphics {
             staging_belt: wgpu::util::StagingBelt::new(1024),
             glyph_brush,
             window_size: size,
+            gpu_busy: Arc::new(AtomicBool::new(false)),
             fps_latest_instant: Instant::now(),
-            fps_recent_frame_time: std::iter::once(0.01).collect(),
+            fps_recent_frame_and_render_time: std::iter::once([Duration::from_millis(10); 2])
+                .collect(),
         }
     }
     pub fn change_ray_splits(&mut self, delta: i8) {
@@ -132,7 +143,21 @@ impl Graphics {
             self.window_size,
         );
     }
+    pub fn get_recent_avg_frame_and_render_time(&self) -> [Duration; 2] {
+        let [f, r] = self
+            .fps_recent_frame_and_render_time
+            .iter()
+            .copied()
+            .reduce(|[f1, r1], [f2, r2]| [f1 + f2, r1 + r2])
+            .unwrap();
+        let n = self.fps_recent_frame_and_render_time.len() as u32;
+        [
+            (f + Instant::now().duration_since(self.fps_latest_instant)) / n,
+            r / n,
+        ]
+    }
     pub fn render(&mut self, bodies: Vec<Sphere>, rotation: Quaternion<f32>) {
+        let now_pre_render = Instant::now();
         // Copy state to GPU
         {
             self.queue
@@ -217,11 +242,13 @@ impl Graphics {
                 text: vec![wgpu_glyph::Text::new({
                     let fps = 1.0
                         / *self
-                            .fps_recent_frame_time
-                            .clone()
-                            .make_contiguous()
+                            .fps_recent_frame_and_render_time
+                            .iter()
+                            .map(|[f, _]| f.as_secs_f32())
+                            .collect::<Vec<f32>>()
                             .select_nth_unstable_by(
-                                (self.fps_recent_frame_time.len() as f32 * FRAME_TIME_PERCENTILE)
+                                (self.fps_recent_frame_and_render_time.len() as f32
+                                    * FRAME_TIME_PERCENTILE)
                                     as usize,
                                 f32::total_cmp,
                             )
@@ -245,19 +272,32 @@ impl Graphics {
                 .unwrap();
             self.staging_belt.finish();
 
+            while self
+                .gpu_busy
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .is_err()
+            {
+                self.device.poll(wgpu::Maintain::Wait);
+            }
             self.queue.submit(std::iter::once(encoder.finish()));
+            self.queue.on_submitted_work_done({
+                let busy = self.gpu_busy.clone();
+                move || busy.store(false, Ordering::Release)
+            });
             surface_texture.present();
             self.staging_belt.recall();
         }
         {
             let now = Instant::now();
-            let frame_time = now.duration_since(self.fps_latest_instant).as_secs_f32();
+            let render_time = now.duration_since(now_pre_render);
+            let frame_time = now.duration_since(self.fps_latest_instant);
             self.fps_latest_instant = now;
 
-            while self.fps_recent_frame_time.len() > FRAME_TIME_HISTORY_COUNT {
-                self.fps_recent_frame_time.pop_front();
+            while self.fps_recent_frame_and_render_time.len() > FRAME_TIME_HISTORY_COUNT {
+                self.fps_recent_frame_and_render_time.pop_front();
             }
-            self.fps_recent_frame_time.push_back(frame_time);
+            self.fps_recent_frame_and_render_time
+                .push_back([frame_time, render_time]);
         }
     }
 }

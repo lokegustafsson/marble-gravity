@@ -1,11 +1,17 @@
 import init, { initThreadPool, computeAccelsInner } from "./nbody.js";
 (async () => {
   await init();
-  await initThreadPool();
+  console.info(`RAYON THREAD POOL size=${navigator.hardwareConcurrency}`);
+  await initThreadPool(navigator.hardwareConcurrency);
   self.onmessage = async (event) => {
-    const bodies_bytes = event.data;
+    const [id, payload] = event.data;
+    if (payload == "ready?") {
+      self.postMessage([id, "ready!"]);
+      return;
+    }
+    const bodies_bytes = payload;
     const accels_bytes = await computeAccelsInner(bodies_bytes);
-    self.postMessage(accels_bytes);
+    self.postMessage([id, accels_bytes]);
   };
-  console.log("Rayon worker loaded");
+  console.info("RAYON WORKER LOADED");
 })();

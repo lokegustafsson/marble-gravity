@@ -1195,9 +1195,12 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "cgmath",
+ "console_error_panic_hook",
+ "console_log",
  "getrandom",
  "instant",
  "js-sys",
+ "log",
  "rand",
  "rand_distr",
  "rayon",

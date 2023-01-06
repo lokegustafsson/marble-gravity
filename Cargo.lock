@@ -1073,8 +1073,8 @@ dependencies = [
  "log",
  "miniz_oxide 0.5.3",
  "naga",
- "nbody",
  "object 0.29.0",
+ "physics",
  "pollster",
  "rustc-demangle",
  "wasm-bindgen",
@@ -1083,6 +1083,7 @@ dependencies = [
  "wgpu",
  "wgpu_glyph",
  "winit",
+ "worker",
 ]
 
 [[package]]
@@ -1187,27 +1188,6 @@ dependencies = [
  "termcolor",
  "thiserror",
  "unicode-xid",
-]
-
-[[package]]
-name = "nbody"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "cgmath",
- "console_error_panic_hook",
- "console_log",
- "getrandom",
- "instant",
- "js-sys",
- "log",
- "rand",
- "rand_distr",
- "rayon",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-rayon",
- "winit",
 ]
 
 [[package]]
@@ -1435,6 +1415,21 @@ name = "percent-encoding"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "478c572c3d73181ff3c2539045f6eb99e5491218eae919370993b890cdbdd98e"
+
+[[package]]
+name = "physics"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "cgmath",
+ "getrandom",
+ "instant",
+ "log",
+ "rand",
+ "rand_distr",
+ "rayon",
+ "winit",
+]
 
 [[package]]
 name = "pkg-config"
@@ -2370,6 +2365,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d129932f4644ac2396cb456385cbf9e63b5b30c6e8dc4820bdca4eb082037a5"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "worker"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "cgmath",
+ "console_error_panic_hook",
+ "console_log",
+ "getrandom",
+ "instant",
+ "js-sys",
+ "log",
+ "physics",
+ "rand",
+ "rand_distr",
+ "rayon",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-rayon",
+ "winit",
 ]
 
 [[package]]

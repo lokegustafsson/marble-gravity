@@ -1,6 +1,5 @@
-use crate::{camera::Camera, graphics::Graphics, spheretree, PHYSICS_MAX_BEHIND_TIME};
+use crate::{camera::Camera, graphics::Graphics, spheretree, PhysicsEvent, PhysicsSystem};
 use instant::Instant;
-use nbody::{Body, NBodyResult, BODIES, PHYSICS_DELTA_TIME};
 use std::{collections::VecDeque, time::Duration};
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
@@ -11,19 +10,19 @@ use winit::{
     window::{CursorGrabMode, Window},
 };
 
-struct Stats {
+pub struct Stats {
     frame_number: u64,
-    tick_number: u64,
+    pub tick_number: u64,
     instant_start: Instant,
-    time_spent_in_physics: Duration,
+    pub time_spent_in_physics: Duration,
     time_spent_in_graphics: Duration,
     event_loop_times: VecDeque<Duration>,
 }
 
-pub fn run(event_loop: EventLoop<NBodyResult>, window: Window, mut graphics: Graphics) {
+pub fn run(event_loop: EventLoop<PhysicsEvent>, window: Window, mut graphics: Graphics) {
     let mut camera = Camera::new();
 
-    let mut bodies: Vec<Body> = (0..BODIES).into_iter().map(|_| Body::initial()).collect();
+    let mut physics = PhysicsSystem::new();
     let mut capture_mouse = false;
     let mut slow_mode = false;
 
@@ -35,12 +34,10 @@ pub fn run(event_loop: EventLoop<NBodyResult>, window: Window, mut graphics: Gra
         Some(rate) => Duration::from_secs(1000) / rate,
         None => Duration::from_secs(1) / 60,
     } / DESIRED_FRAME_MULTIPLE;
-    let desired_event_loop_period = desired_frame_time / 100;
+    let desired_event_loop_period = desired_frame_time / 5;
     let mut initialized = false;
     let mut last_begun_main_events_cleared = Instant::now();
-    let mut physics_timestamp = last_begun_main_events_cleared;
     let mut camera_timestamp = last_begun_main_events_cleared;
-    let mut currently_running_physics = false;
 
     let mut stats = Stats {
         frame_number: 0,
@@ -132,7 +129,6 @@ pub fn run(event_loop: EventLoop<NBodyResult>, window: Window, mut graphics: Gra
                 let now = Instant::now();
                 if !initialized {
                     camera_timestamp = now;
-                    physics_timestamp = now;
                     initialized = true;
                 }
                 camera_timestamp += camera.update_return_stepped(now - camera_timestamp);
@@ -151,20 +147,7 @@ pub fn run(event_loop: EventLoop<NBodyResult>, window: Window, mut graphics: Gra
                 }
                 last_begun_main_events_cleared = now;
 
-                if now.checked_duration_since(physics_timestamp) > Some(PHYSICS_MAX_BEHIND_TIME) {
-                    let new_physics_timestamp = now.checked_sub(PHYSICS_DELTA_TIME).unwrap();
-                    log::error!(
-                        "Physics computation far behind, dropping {}ms",
-                        (new_physics_timestamp - physics_timestamp).as_millis()
-                    );
-                    physics_timestamp = new_physics_timestamp;
-                }
-                if !currently_running_physics {
-                    match NBodyResult::spawn_compute_accels(&bodies, proxy.clone()) {
-                        Ok(()) => currently_running_physics = true,
-                        Err(()) => {}
-                    }
-                }
+                physics.start(now, proxy.clone(), &mut stats);
                 {
                     let [frame, render] = graphics.get_recent_avg_frame_and_render_time();
                     let sufficient_non_render_time =
@@ -190,7 +173,10 @@ pub fn run(event_loop: EventLoop<NBodyResult>, window: Window, mut graphics: Gra
                 }
                 let instant_pre_graphics = Instant::now();
                 graphics.render(
-                    spheretree::make_sphere_tree(&bodies, camera.world_to_camera()),
+                    spheretree::make_sphere_tree(
+                        &physics.physics.bodies(),
+                        camera.world_to_camera(),
+                    ),
                     camera.rotation(),
                 );
                 stats.time_spent_in_graphics += Instant::now().duration_since(instant_pre_graphics);
@@ -204,30 +190,17 @@ pub fn run(event_loop: EventLoop<NBodyResult>, window: Window, mut graphics: Gra
                         stats.time_spent_in_graphics.as_secs(),
                         stats.frame_number,
                     );
-                    let ups = stats.event_loop_times.len() as f64
-                        / stats
-                            .event_loop_times
-                            .iter()
-                            .sum::<Duration>()
-                            .as_secs_f64();
-                    log::info!("Event loop UPS = {:.0}", ups);
                 }
                 control_flow
                     .set_wait_until(last_begun_main_events_cleared + desired_event_loop_period);
             }
-            Event::UserEvent(NBodyResult { accels, time_spent }) => {
-                assert!(currently_running_physics);
-                stats.time_spent_in_physics += time_spent;
-                stats.tick_number += 1;
-                Body::perform_step(&mut bodies, accels);
-                physics_timestamp += PHYSICS_DELTA_TIME;
-
-                if Instant::now().checked_duration_since(physics_timestamp)
-                    > Some(PHYSICS_DELTA_TIME)
+            Event::UserEvent(event) => {
+                #[cfg(target_arch = "wasm32")]
+                physics.handle_event(event, &mut stats);
+                #[cfg(not(target_arch = "wasm32"))]
                 {
-                    NBodyResult::spawn_compute_accels(&bodies, proxy.clone()).unwrap();
-                } else {
-                    currently_running_physics = false;
+                    let () = event;
+                    unreachable!();
                 }
             }
             _ => {}

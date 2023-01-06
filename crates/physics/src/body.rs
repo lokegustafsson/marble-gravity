@@ -1,13 +1,9 @@
-use crate::Accel;
+use crate::PHYSICS_DELTA_TIME;
 use cgmath::{prelude::*, Vector3};
 use rand_distr::Distribution;
-use std::time::Duration;
-
-pub const PHYSICS_DELTA_TIME: Duration = Duration::from_millis(1);
-pub const BODIES: u32 = 256;
 const SYSTEM_RADIUS: f32 = 10.0;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Body {
     pub pos: Vector3<f32>,
     pub vel: Vector3<f32>,
@@ -31,7 +27,7 @@ impl Body {
             color: rand::random(),
         }
     }
-    pub fn perform_step(bodies: &mut [Body], accels: Vec<Accel>) {
+    pub fn perform_step(bodies: &mut [Body], accels: Vec<Vector3<f32>>) {
         let mut vels: Vec<_> = bodies.iter().map(Body::new_vel).collect();
         let total_mass: f32 = bodies.iter().map(|b| b.radius.powi(3)).sum();
         let total_momentum: Vector3<f32> = bodies
@@ -45,7 +41,36 @@ impl Body {
             .iter_mut()
             .zip(vels)
             .zip(accels)
-            .for_each(|((b, v), Accel(a))| b.step_using_vel_accel([v, a]));
+            .for_each(|((b, v), a)| b.step_using_vel_accel([v, a]));
+    }
+    pub fn accel_from(&self, bodies: &[Body]) -> Vector3<f32> {
+        const GRAVITY_CONSTANT: f32 = 80.0;
+        const GAP: f32 = 0.001;
+        const STIFFNESS: f32 = 1.0;
+        const DAMPING: f32 = 0.2; // In (0,1); less than 0.05 is wonky
+
+        let dt = PHYSICS_DELTA_TIME.as_secs_f32();
+        let mut accel = Vector3::zero();
+        for other in bodies {
+            if other.pos == self.pos {
+                continue; // Same body
+            }
+            let rel_pos = other.pos - self.pos;
+            let distance = rel_pos.magnitude();
+            let rel_pos_norm = rel_pos / distance;
+            let rel_vel = (other.vel - self.vel).dot(rel_pos_norm);
+
+            let overlap =
+                self.radius + GAP + other.radius - distance - rel_vel * dt * (1.0 + DAMPING) / 2.0;
+            if overlap > 0.0 {
+                // Spring-based collision
+                let force_towards_other = -STIFFNESS * overlap;
+                accel += force_towards_other / self.radius.powi(3) * rel_pos_norm;
+            }
+            // Gravitational interaction
+            accel += GRAVITY_CONSTANT * other.radius.powi(3) / distance.powi(2) * rel_pos_norm;
+        }
+        accel
     }
     fn new_vel(&self) -> Vector3<f32> {
         if self.pos.magnitude2() > SYSTEM_RADIUS.powi(2) && self.vel.dot(self.pos) > 0.0 {

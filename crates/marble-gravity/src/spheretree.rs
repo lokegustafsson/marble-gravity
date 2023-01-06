@@ -1,8 +1,8 @@
 use cgmath::{prelude::*, Matrix4, Vector3};
-use nbody::Body;
+use physics::{Body, BODIES};
 use std::iter::repeat;
 
-pub fn make_sphere_tree(bodies: &[Body], world_to_camera: Matrix4<f32>) -> Vec<Sphere> {
+pub fn make_sphere_tree(bodies: &[Body; BODIES], world_to_camera: Matrix4<f32>) -> Vec<Sphere> {
     let mut spheres: Vec<Option<Sphere>> = bodies
         .iter()
         .map(|body| Sphere::leaf(body, &world_to_camera))

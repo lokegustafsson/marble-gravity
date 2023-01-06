@@ -3,11 +3,16 @@ mod graphics;
 mod run;
 mod spheretree;
 
-use crate::graphics::{Graphics, Parameters};
-use std::time::Duration;
-use winit::{event_loop::EventLoopBuilder, window::WindowBuilder};
-
-const PHYSICS_MAX_BEHIND_TIME: Duration = Duration::from_secs(1);
+use crate::{
+    graphics::{Graphics, Parameters},
+    run::Stats,
+};
+use instant::Instant;
+use physics::{Physics, PhysicsResult};
+use winit::{
+    event_loop::{EventLoopBuilder, EventLoopProxy},
+    window::WindowBuilder,
+};
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen)]
 pub fn start() {
@@ -113,4 +118,70 @@ async fn get_device_and_queue(adapter: &wgpu::Adapter) -> (wgpu::Device, wgpu::Q
         )
         .await
         .expect("Failed to acquire device")
+}
+
+#[cfg(target_arch = "wasm32")]
+type PhysicsEvent = (Box<Physics>, PhysicsResult);
+#[cfg(not(target_arch = "wasm32"))]
+type PhysicsEvent = ();
+
+struct PhysicsSystem {
+    pub physics: Box<Physics>,
+    #[cfg(target_arch = "wasm32")]
+    currently_running: bool,
+}
+impl PhysicsSystem {
+    pub fn new() -> Self {
+        Self {
+            physics: Physics::initial(),
+            #[cfg(target_arch = "wasm32")]
+            currently_running: false,
+        }
+    }
+    pub fn start(
+        &mut self,
+        target: Instant,
+        proxy: EventLoopProxy<PhysicsEvent>,
+        stats: &mut Stats,
+    ) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = stats;
+            if self.currently_running {
+                return;
+            }
+            match worker::outer::Worker::advance_physics_to(&self.physics, target, proxy) {
+                Ok(()) => self.currently_running = true,
+                Err(()) => {}
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = proxy;
+            let result = self.physics.advance_to(target);
+            self.report(result, stats);
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub fn handle_event(
+        &mut self,
+        (physics, result): (Box<Physics>, PhysicsResult),
+        stats: &mut Stats,
+    ) {
+        assert!(self.currently_running);
+        self.physics = physics;
+        self.currently_running = false;
+        self.report(result, stats);
+    }
+    fn report(
+        &self,
+        PhysicsResult {
+            elapsed_real,
+            elapsed_physics: _,
+        }: PhysicsResult,
+        stats: &mut Stats,
+    ) {
+        stats.time_spent_in_physics += elapsed_real;
+        stats.tick_number += 1;
+    }
 }

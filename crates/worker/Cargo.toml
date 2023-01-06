@@ -1,0 +1,31 @@
+[package]
+name = "worker"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+physics = { path = "../physics" }
+bytemuck = { version = "1", features = ["extern_crate_alloc"] }
+cgmath = "0.18"
+log = "0.4"
+rand = "0.8"
+rand_distr = "0.4"
+rayon = { version = "1", optional = true }
+winit = "0.27"
+console_error_panic_hook = "0.1"
+console_log = "0.2.0"
+getrandom = { version = "0.2", features = ["js"] }
+instant = { version = "0.1", features = ["wasm-bindgen"] }
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+wasm-bindgen-rayon = { version = "1", features = ["no-bundler"] }
+
+[features]
+outer = []
+inner = ["physics/rayon"]

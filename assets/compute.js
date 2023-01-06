@@ -1,4 +1,4 @@
-const worker = new Worker("./worker.js", { type: "module" });
+const worker = new Worker("./workermain.js", { type: "module" });
 let ready = false;
 let sequence_id = 0;
 let id_to_resolver = {};
@@ -28,10 +28,12 @@ export function pollReady() {
     return false;
   }
 }
-export function computeAccelsOuter(bodies_bytes) {
+export function workerOuter(input) {
   return new Promise((resolve, _reject) => {
     const id = ++sequence_id;
     id_to_resolver[id] = resolve;
-    worker.postMessage([id, bodies_bytes]);
+    const input_owned = new BigUint64Array(new ArrayBuffer(input.byteLength));
+    input_owned.set(input);
+    worker.postMessage([id, input_owned], [input_owned.buffer]);
   });
 }

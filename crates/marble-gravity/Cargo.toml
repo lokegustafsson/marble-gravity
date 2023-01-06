@@ -14,7 +14,7 @@ bytemuck = { version = "1", features = ["extern_crate_alloc"] }
 cgmath = "0.18"
 instant = "0.1"
 log = "0.4"
-nbody = { path = "../nbody", features = ["outer"] }
+physics = { path = "../physics" }
 wgpu = { version = "0.14" }
 wgpu_glyph = "0.18"
 winit = "0.27"
@@ -31,6 +31,7 @@ js-sys = "0.3"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 wgpu = { version = "0.14", features = ["webgl"]}
+worker = { path = "../worker", features = ["outer"] }
 web-sys = { version = "0.3", features = [
     "Document",
     "Window",

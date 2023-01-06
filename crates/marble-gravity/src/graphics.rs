@@ -1,7 +1,7 @@
 use crate::spheretree::Sphere;
 use cgmath::{prelude::*, Quaternion, Vector2, Vector3};
 use instant::Instant;
-use nbody::BODIES;
+use physics::BODIES;
 use std::{
     collections::VecDeque,
     mem,
@@ -73,7 +73,7 @@ impl Graphics {
 
         let body_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Body buffer"),
-            size: ((2 * BODIES - 1) * mem::size_of::<Sphere>() as u32) as u64,
+            size: ((2 * BODIES - 1) * mem::size_of::<Sphere>()) as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });

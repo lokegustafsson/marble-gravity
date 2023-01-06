@@ -50,8 +50,8 @@ let
         filter = craneLib.filterCargoSources;
       };
       cargoLock = ./Cargo.lock;
-      cargoToml = ./crates/nbody/Cargo.toml;
-      cargoExtraArgs = "--package nbody --target wasm32-unknown-unknown --features inner";
+      cargoToml = ./crates/worker/Cargo.toml;
+      cargoExtraArgs = "--package worker --target wasm32-unknown-unknown --features inner";
       doCheck = false;
       buildInputs = [ ];
     };
@@ -65,17 +65,17 @@ let
         export PATH="$coreutils/bin:$wasmbindgen/bin"
         wasm-bindgen --target web $mainWasm/lib/marble_gravity.wasm \
           --no-typescript --out-dir $out/
-        wasm-bindgen --target web $workerWasm/lib/nbody.wasm \
+        wasm-bindgen --target web $workerWasm/lib/worker.wasm \
           --no-typescript --out-dir $out/
         cp $indexhtml $out/index.html
         cp $computejs $out/compute.js
-        cp $workerjs $out/worker.js
+        cp $workermainjs $out/workermain.js
         cp $polyfill $out/module-workers-polyfill.js
       ''
     ];
     indexhtml = ./assets/index.html;
     computejs = ./assets/compute.js;
-    workerjs = ./assets/worker.js;
+    workermainjs = ./assets/workermain.js;
     polyfill = ./assets/module-workers-polyfill.js;
     coreutils = pkgs.coreutils;
     wasmbindgen = wasm-bindgen;

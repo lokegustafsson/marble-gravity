@@ -151,7 +151,7 @@ pub fn run(event_loop: EventLoop<PhysicsEvent>, window: Window, mut graphics: Gr
                 {
                     let [frame, render] = graphics.get_recent_avg_frame_and_render_time();
                     let sufficient_non_render_time =
-                        render.as_secs_f64() / frame.as_secs_f64() < 0.8;
+                        render.as_secs_f64() / frame.as_secs_f64() < 2.0;
                     let too_long_frame_time = frame > desired_frame_time;
                     if sufficient_non_render_time && too_long_frame_time {
                         window.request_redraw();
@@ -178,6 +178,7 @@ pub fn run(event_loop: EventLoop<PhysicsEvent>, window: Window, mut graphics: Gr
                         camera.world_to_camera(),
                     ),
                     camera.rotation(),
+                    stats.frame_number % 30 == 0,
                 );
                 stats.time_spent_in_graphics += Instant::now().duration_since(instant_pre_graphics);
                 stats.frame_number += 1;

@@ -25,7 +25,6 @@ pub fn start() {
     {
         std::panic::set_hook(Box::new(console_error_panic_hook::hook));
         console_log::init_with_level(log::Level::Info).unwrap();
-        log::info!("START");
         wasm_bindgen_futures::spawn_local(setup_and_run());
     }
 }
@@ -68,14 +67,16 @@ async fn setup_and_run() {
     let device_and_queue = get_device_and_queue(&adapter).await;
     let parameters = Parameters {
         texture_format: *surface.get_supported_formats(&adapter).first().unwrap(),
-        present_mode: {
+        present_mode: (|| {
             let supported = surface.get_supported_present_modes(&adapter);
-            if supported.contains(&wgpu::PresentMode::Mailbox) {
-                wgpu::PresentMode::Mailbox
-            } else {
-                *supported.first().unwrap()
+            let preferences = [wgpu::PresentMode::FifoRelaxed, wgpu::PresentMode::Fifo];
+            for p in preferences {
+                if supported.contains(&p) {
+                    return p;
+                }
             }
-        },
+            return *supported.first().unwrap();
+        })(),
     };
 
     let graphics = Graphics::initialize(parameters, surface, device_and_queue, size).await;
@@ -177,11 +178,11 @@ impl PhysicsSystem {
         &self,
         PhysicsResult {
             elapsed_real,
-            elapsed_physics: _,
+            elapsed_physics_ticks,
         }: PhysicsResult,
         stats: &mut Stats,
     ) {
         stats.time_spent_in_physics += elapsed_real;
-        stats.tick_number += 1;
+        stats.tick_number += elapsed_physics_ticks;
     }
 }

@@ -16,7 +16,6 @@ pub mod inner {
     pub fn init_logging() {
         std::panic::set_hook(Box::new(console_error_panic_hook::hook));
         let (Ok(_) | Err(_)) = console_log::init_with_level(log::Level::Info);
-        log::info!("NBODY START");
     }
 
     /// Called by javascript glue on worker thread

@@ -12,5 +12,5 @@ import init, { initThreadPool, workerInner } from "./worker.js";
     const output = await workerInner(input);
     self.postMessage([id, output], [output.buffer]);
   };
-  console.info("RAYON WORKER LOADED");
+  console.info("ALL RAYON WORKERS LOADED");
 })();

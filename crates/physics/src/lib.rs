@@ -20,7 +20,7 @@ unsafe impl bytemuck::Pod for Physics {}
 #[derive(Clone, Copy, Debug)]
 pub struct PhysicsResult {
     pub elapsed_real: Duration,
-    pub elapsed_physics: Duration,
+    pub elapsed_physics_ticks: u64,
 }
 
 impl Physics {
@@ -44,7 +44,7 @@ impl Physics {
         use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
         let before = Instant::now();
-        let timestamp_before = self.timestamp;
+        let mut elapsed_physics_ticks = 0;
         loop {
             let lag = target.checked_duration_since(self.timestamp);
             match lag {
@@ -66,10 +66,11 @@ impl Physics {
                 .collect();
             Body::perform_step(&mut self.bodies, accels);
             self.timestamp += PHYSICS_DELTA_TIME;
+            elapsed_physics_ticks += 1;
         }
         PhysicsResult {
             elapsed_real: Instant::now() - before,
-            elapsed_physics: self.timestamp - timestamp_before,
+            elapsed_physics_ticks,
         }
     }
 }

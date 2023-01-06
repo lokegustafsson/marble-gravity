@@ -6,14 +6,13 @@ use std::{
     collections::VecDeque,
     mem,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicU64, Ordering},
         Arc,
     },
     time::Duration,
 };
 
-const FRAME_TIME_HISTORY_COUNT: usize = 100;
-const FRAME_TIME_PERCENTILE: f32 = 0.6;
+const FRAME_TIME_HISTORY_COUNT: usize = 30;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -54,9 +53,10 @@ pub struct Graphics {
     staging_belt: wgpu::util::StagingBelt,
     glyph_brush: wgpu_glyph::GlyphBrush<()>,
     window_size: (u32, u32),
-    gpu_busy: Arc<AtomicBool>,
+    this_frame_render_time_nanos_or_zero: Arc<AtomicU64>,
     fps_latest_instant: Instant,
     fps_recent_frame_and_render_time: VecDeque<[Duration; 2]>,
+    fps_display: f32,
 }
 impl Graphics {
     pub async fn initialize(
@@ -107,10 +107,11 @@ impl Graphics {
             staging_belt: wgpu::util::StagingBelt::new(1024),
             glyph_brush,
             window_size: size,
-            gpu_busy: Arc::new(AtomicBool::new(false)),
+            this_frame_render_time_nanos_or_zero: Arc::new(AtomicU64::new(10_000_000)),
             fps_latest_instant: Instant::now(),
             fps_recent_frame_and_render_time: std::iter::once([Duration::from_millis(10); 2])
                 .collect(),
+            fps_display: 100.0,
         }
     }
     pub fn change_ray_splits(&mut self, delta: i8) {
@@ -144,6 +145,7 @@ impl Graphics {
         );
     }
     pub fn get_recent_avg_frame_and_render_time(&self) -> [Duration; 2] {
+        self.device.poll(wgpu::MaintainBase::Poll);
         let [f, r] = self
             .fps_recent_frame_and_render_time
             .iter()
@@ -156,7 +158,12 @@ impl Graphics {
             r / n,
         ]
     }
-    pub fn render(&mut self, bodies: Vec<Sphere>, rotation: Quaternion<f32>) {
+    pub fn render(
+        &mut self,
+        bodies: Vec<Sphere>,
+        rotation: Quaternion<f32>,
+        update_fps_display: bool,
+    ) {
         let now_pre_render = Instant::now();
         // Copy state to GPU
         {
@@ -179,7 +186,7 @@ impl Graphics {
             }
         }
         // Render
-        {
+        let render_time = {
             let surface_texture = self
                 .surface
                 .get_current_texture()
@@ -240,19 +247,7 @@ impl Graphics {
                 screen_position: (5.0, 5.0),
                 bounds: (self.window_size.0 as f32, self.window_size.1 as f32),
                 text: vec![wgpu_glyph::Text::new({
-                    let fps = 1.0
-                        / *self
-                            .fps_recent_frame_and_render_time
-                            .iter()
-                            .map(|[f, _]| f.as_secs_f32())
-                            .collect::<Vec<f32>>()
-                            .select_nth_unstable_by(
-                                (self.fps_recent_frame_and_render_time.len() as f32
-                                    * FRAME_TIME_PERCENTILE)
-                                    as usize,
-                                f32::total_cmp,
-                            )
-                            .1;
+                    let fps = self.fps_display;
                     let precision = (2 - fps.log10().ceil() as isize).max(0) as usize;
                     &format!("{fps:.precision$}")
                 })
@@ -272,24 +267,39 @@ impl Graphics {
                 .unwrap();
             self.staging_belt.finish();
 
-            while self
-                .gpu_busy
-                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-                .is_err()
-            {
-                self.device.poll(wgpu::Maintain::Wait);
-            }
+            let render_time = loop {
+                let render_time = self
+                    .this_frame_render_time_nanos_or_zero
+                    .load(Ordering::SeqCst);
+                if render_time == 0 {
+                    self.device.poll(wgpu::Maintain::Wait);
+                    continue;
+                }
+                self.this_frame_render_time_nanos_or_zero
+                    .compare_exchange(render_time, 0, Ordering::SeqCst, Ordering::SeqCst)
+                    .unwrap();
+                break render_time;
+            };
             self.queue.submit(std::iter::once(encoder.finish()));
             self.queue.on_submitted_work_done({
-                let busy = self.gpu_busy.clone();
-                move || busy.store(false, Ordering::Release)
+                let slot = self.this_frame_render_time_nanos_or_zero.clone();
+                move || {
+                    let render_time: u64 = Instant::now()
+                        .checked_duration_since(now_pre_render)
+                        .unwrap()
+                        .as_nanos()
+                        .try_into()
+                        .unwrap();
+                    slot.compare_exchange(0, render_time, Ordering::SeqCst, Ordering::SeqCst)
+                        .unwrap();
+                }
             });
             surface_texture.present();
             self.staging_belt.recall();
-        }
+            render_time
+        };
         {
             let now = Instant::now();
-            let render_time = now.duration_since(now_pre_render);
             let frame_time = now.duration_since(self.fps_latest_instant);
             self.fps_latest_instant = now;
 
@@ -297,7 +307,16 @@ impl Graphics {
                 self.fps_recent_frame_and_render_time.pop_front();
             }
             self.fps_recent_frame_and_render_time
-                .push_back([frame_time, render_time]);
+                .push_back([frame_time, Duration::from_nanos(render_time)]);
+
+            if update_fps_display {
+                self.fps_display = (self.fps_recent_frame_and_render_time.len() as f32)
+                    / self
+                        .fps_recent_frame_and_render_time
+                        .iter()
+                        .map(|[f, _]| f.as_secs_f32())
+                        .sum::<f32>();
+            }
         }
     }
 }

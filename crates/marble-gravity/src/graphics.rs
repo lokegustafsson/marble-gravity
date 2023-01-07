@@ -1,5 +1,5 @@
 use crate::spheretree::Sphere;
-use cgmath::{prelude::*, Quaternion, Vector2, Vector3};
+use cgmath::{prelude::*, Matrix3, Matrix4, Quaternion, Vector2, Vector3};
 use instant::Instant;
 use physics::BODIES;
 use std::{
@@ -11,24 +11,27 @@ use std::{
     },
     time::Duration,
 };
+use wgpu::util::DeviceExt;
 
 const FRAME_TIME_HISTORY_COUNT: usize = 30;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct Uniforms {
-    pub(self) source_direction: Vector3<f32>,
+    sun_direction: Vector3<f32>,
     ray_splits: u32,
     pub(self) window_size: Vector2<f32>,
     _padding2: [u32; 2],
+    pub(self) view_to_world_space: Matrix4<f32>,
 }
 impl Uniforms {
     pub fn new() -> Self {
         Self {
-            source_direction: Vector3::zero(),
-            ray_splits: 2,
+            sun_direction: Vector3::unit_x(),
             window_size: Vector2::zero(),
+            ray_splits: 4,
             _padding2: [0; 2],
+            view_to_world_space: Matrix4::one(),
         }
     }
 }
@@ -84,7 +87,16 @@ impl Graphics {
             mapped_at_creation: false,
         });
 
-        let render_tasks = make_render_tasks(&parameters, &device, &body_buffer, &uniforms_buffer);
+        let (skybox_texture_view, skybox_sampler) =
+            make_skybox_texture_view_and_sampler(&device, &queue);
+        let render_tasks = make_render_tasks(
+            &parameters,
+            &device,
+            &body_buffer,
+            &uniforms_buffer,
+            &skybox_texture_view,
+            &skybox_sampler,
+        );
 
         let font = wgpu_glyph::ab_glyph::FontArc::try_from_slice(include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -169,12 +181,18 @@ impl Graphics {
         {
             self.queue
                 .write_buffer(&self.body_buffer, 0, bytemuck::cast_slice(&bodies));
-            let source_dir = rotation
-                .conjugate()
-                .rotate_vector(Vector3::new(0.0, -1.0, 0.0));
-            if source_dir != self.uniforms.source_direction {
+            let sun_direction = rotation.conjugate().rotate_vector(Vector3::unit_x());
+            let view_to_world_space = Matrix4::from(Matrix3::from_cols(
+                rotation.rotate_vector(Vector3::unit_x()),
+                rotation.rotate_vector(Vector3::unit_y()),
+                rotation.rotate_vector(Vector3::unit_z()),
+            ));
+            if sun_direction != self.uniforms.sun_direction
+                || view_to_world_space != self.uniforms.view_to_world_space
+            {
                 self.uniforms_are_new = true;
-                self.uniforms.source_direction = source_dir;
+                self.uniforms.sun_direction = sun_direction;
+                self.uniforms.view_to_world_space = view_to_world_space;
             }
             if self.uniforms_are_new {
                 self.queue.write_buffer(
@@ -340,11 +358,87 @@ fn configure_surface(
     )
 }
 
+fn make_skybox_texture_view_and_sampler(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+) -> (wgpu::TextureView, wgpu::Sampler) {
+    let texture = {
+        let png: [&[u8]; 6] = [
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../assets/skybox/right.png"
+            )),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../assets/skybox/left.png"
+            )),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../assets/skybox/top.png"
+            )),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../assets/skybox/bottom.png"
+            )),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../assets/skybox/front.png"
+            )),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../assets/skybox/back.png"
+            )),
+        ];
+        let images = png.map(|p| image::load_from_memory(p).unwrap().into_rgba8());
+        let (width, height) = images[0].dimensions();
+        assert_eq!(width, height);
+        for im in &images {
+            assert_eq!((width, height), im.dimensions());
+        }
+        device.create_texture_with_data(
+            &queue,
+            &wgpu::TextureDescriptor {
+                label: Some("skybox texture"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: {
+                        assert_eq!(images.len(), 6);
+                        6
+                    },
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            },
+            &images.map(|im| im.into_raw()).concat(),
+        )
+    };
+    let texture_view = texture.create_view(&wgpu::TextureViewDescriptor {
+        dimension: Some(wgpu::TextureViewDimension::Cube),
+        ..Default::default()
+    });
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Nearest,
+        mipmap_filter: wgpu::FilterMode::Nearest,
+        ..Default::default()
+    });
+    (texture_view, sampler)
+}
+
 fn make_render_tasks(
     parameters: &Parameters,
     device: &wgpu::Device,
     body_buffer: &wgpu::Buffer,
     uniforms_buffer: &wgpu::Buffer,
+    skybox_texture_view: &wgpu::TextureView,
+    skybox_sampler: &wgpu::Sampler,
 ) -> wgpu::RenderBundle {
     let mut bundle_encoder =
         device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
@@ -374,6 +468,14 @@ fn make_render_tasks(
                     offset: 0,
                     size: None,
                 }),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::TextureView(skybox_texture_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::Sampler(skybox_sampler),
             },
         ],
     });
@@ -409,6 +511,22 @@ fn make_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
                     has_dynamic_offset: false,
                     min_binding_size: None,
                 },
+                count: None, // See above
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    multisampled: false,
+                    view_dimension: wgpu::TextureViewDimension::Cube,
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                },
+                count: None, // See above
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None, // See above
             },
         ],

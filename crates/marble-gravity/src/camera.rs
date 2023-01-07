@@ -27,8 +27,8 @@ pub struct Camera {
 impl Camera {
     pub fn new() -> Self {
         Self {
-            position: Vector3::new(0.0, 0.0, -2.0),
-            rotation: Quaternion::one(),
+            position: -2.0f32 * Vector3::unit_x(),
+            rotation: Quaternion::from_angle_y(Rad(std::f32::consts::PI / 2.0)),
             slow_mode: false,
             forwards: false,
             backwards: false,

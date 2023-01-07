@@ -30,8 +30,8 @@ const vec4 RED = vec4(1,0,0,1);
 const int NO_HIT = -1;
 const float EPSILON = 0.01;
 
-const vec3 AMBIENT = vec3(0.08); // Uniform?
-const vec3 SUN_COLOR = vec3(1); // Uniform?
+const vec3 AMBIENT = vec3(0.08);
+const vec3 SUN_COLOR = vec3(1);
 const float SUN_SIZE = 1e-2;
 const float SUN_CORONA = 1e-3;
 const float REFRACTIVE_INDEX = 1.1;
@@ -51,8 +51,11 @@ layout(set=0, binding=1) uniform Uniforms {
     vec3 sun_direction;
     uint ray_splits;
     vec2 window_size;
-    vec2 padding;
+    vec2 padding2;
+    mat4 view_to_world_space;
 };
+layout(set=0, binding=2) uniform textureCube skybox_texture;
+layout(set=0, binding=3) uniform sampler skybox_sampler;
 
 // Forward function declarations ===
 float softmax(float a, float b, float c);
@@ -187,7 +190,8 @@ vec3 split0_ray(const vec3 from, const vec3 ray) {
     const vec3 normal = hit.normal;
     const vec3 hit_point = bodies[hit.id].pos + (1 + EPSILON) * bodies[hit.id].radius * normal;
     const vec3 color = color_xyz(bodies[hit.id].color);
-    const float opacity = color_w(bodies[hit.id].color);
+    const float opacity_factor = color_w(bodies[hit.id].color);
+    const float opacity = 1.0 - opacity_factor * opacity_factor;
 
     // Ambient
     vec3 light = AMBIENT * opacity * color;
@@ -215,10 +219,12 @@ float rings(float x) {
 
 // What color is the background in the [ray] direction?
 vec3 background_light(const vec3 ray) {
-    const float alignment = max(0, dot(ray, sun_direction));
-    vec3 sun = SUN_COLOR * min(1, pow(SUN_SIZE + alignment, 1/SUN_CORONA));
-    float rings = 0.04 * rings(dot(ray, sun_direction));
-    return sun + vec3(rings);
+    //const float alignment = max(0, dot(ray, sun_direction));
+    //vec3 sun = SUN_COLOR * min(1, pow(SUN_SIZE + alignment, 1/SUN_CORONA));
+    //float rings = 0.04 * rings(dot(ray, sun_direction));
+    //return sun + vec3(rings);
+    vec4 world_ray = view_to_world_space * vec4(ray, 1);
+    return texture(samplerCube(skybox_texture, skybox_sampler), world_ray.xyz).xyz;
 }
 
 // Cast a ray by traversing the body tree. Will set [stack_overflow] on overflow

@@ -36,11 +36,13 @@ let
         filter = path: type:
           (craneLib.filterCargoSources path type
             || (builtins.match ".*/assets/.*\\.ttf$" path) != null
+            || (builtins.match ".*/assets/skybox/.*\\.png$" path) != null
             || (builtins.match ".*/src/.*\\.(frag|vert|wgsl)$" path) != null);
       };
       cargoLock = ./Cargo.lock;
       cargoToml = ./crates/marble-gravity/Cargo.toml;
-      cargoExtraArgs = "--package marble-gravity --target wasm32-unknown-unknown";
+      cargoExtraArgs =
+        "--package marble-gravity --target wasm32-unknown-unknown";
       doCheck = false;
       buildInputs = [ ];
     };
@@ -51,7 +53,8 @@ let
       };
       cargoLock = ./Cargo.lock;
       cargoToml = ./crates/worker/Cargo.toml;
-      cargoExtraArgs = "--package worker --target wasm32-unknown-unknown --features inner";
+      cargoExtraArgs =
+        "--package worker --target wasm32-unknown-unknown --features inner";
       doCheck = false;
       buildInputs = [ ];
     };

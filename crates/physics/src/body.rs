@@ -1,7 +1,12 @@
 use crate::PHYSICS_DELTA_TIME;
 use cgmath::{prelude::*, Vector3};
 use rand_distr::Distribution;
-const SYSTEM_RADIUS: f32 = 10.0;
+
+const SYSTEM_RADIUS: f32 = 5.0;
+const GRAVITY_CONSTANT: f32 = 40.0;
+const GAP: f32 = 0.001;
+const STIFFNESS: f32 = 1.0;
+const DAMPING: f32 = 0.2; // In (0,1); less than 0.05 is wonky
 
 #[derive(Debug, Copy, Clone)]
 pub struct Body {
@@ -23,7 +28,7 @@ impl Body {
         Body {
             pos,
             vel: 0.1 * pos.cross(rand),
-            radius: 0.03 * (0.8 * rand::random::<f32>() + 0.2),
+            radius: 0.03 * (0.8 * r().abs() + 0.2),
             color: rand::random(),
         }
     }
@@ -44,11 +49,6 @@ impl Body {
             .for_each(|((b, v), a)| b.step_using_vel_accel([v, a]));
     }
     pub fn accel_from(&self, bodies: &[Body]) -> Vector3<f32> {
-        const GRAVITY_CONSTANT: f32 = 80.0;
-        const GAP: f32 = 0.001;
-        const STIFFNESS: f32 = 1.0;
-        const DAMPING: f32 = 0.2; // In (0,1); less than 0.05 is wonky
-
         let dt = PHYSICS_DELTA_TIME.as_secs_f32();
         let mut accel = Vector3::zero();
         for other in bodies {
@@ -74,7 +74,7 @@ impl Body {
     }
     fn new_vel(&self) -> Vector3<f32> {
         if self.pos.magnitude2() > SYSTEM_RADIUS.powi(2) && self.vel.dot(self.pos) > 0.0 {
-            self.vel * -0.99
+            self.vel * 0.99
         } else {
             self.vel
         }

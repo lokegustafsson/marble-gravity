@@ -30,11 +30,6 @@ pub mod inner {
         } else {
             unreachable!();
         };
-        for (i, b) in physics.bodies().iter().enumerate() {
-            assert!(b.pos.x.is_finite());
-            assert!(b.pos.y.is_finite());
-            assert!(b.pos.z.is_finite());
-        }
         let mut physics = physics.clone();
         let result = physics.advance_to(target_instant);
         let output: Vec<WorkerOutput> = vec![WorkerOutput { physics, result }];
@@ -61,11 +56,6 @@ pub mod outer {
                 return Err(());
             }
 
-            for (i, b) in physics.bodies().iter().enumerate() {
-                assert!(b.pos.x.is_finite());
-                assert!(b.pos.y.is_finite());
-                assert!(b.pos.z.is_finite());
-            }
             let input: WorkerInput = WorkerInput {
                 physics: physics.clone(),
                 target_instant: target,

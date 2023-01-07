@@ -160,7 +160,7 @@ impl PhysicsSystem {
         {
             let _ = proxy;
             let result = self.physics.advance_to(target);
-            self.report(result, stats);
+            Self::report(result, stats);
         }
     }
     #[cfg(target_arch = "wasm32")]
@@ -172,10 +172,9 @@ impl PhysicsSystem {
         assert!(self.currently_running);
         self.physics = physics;
         self.currently_running = false;
-        self.report(result, stats);
+        Self::report(result, stats);
     }
     fn report(
-        &self,
         PhysicsResult {
             elapsed_real,
             elapsed_physics_ticks,

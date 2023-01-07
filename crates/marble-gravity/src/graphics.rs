@@ -355,7 +355,7 @@ fn configure_surface(
             present_mode: parameters.present_mode,
             alpha_mode: wgpu::CompositeAlphaMode::Opaque,
         },
-    )
+    );
 }
 
 fn make_skybox_texture_view_and_sampler(
@@ -396,7 +396,7 @@ fn make_skybox_texture_view_and_sampler(
             assert_eq!((width, height), im.dimensions());
         }
         device.create_texture_with_data(
-            &queue,
+            queue,
             &wgpu::TextureDescriptor {
                 label: Some("skybox texture"),
                 size: wgpu::Extent3d {

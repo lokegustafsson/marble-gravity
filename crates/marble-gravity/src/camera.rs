@@ -90,7 +90,7 @@ impl Camera {
         self.yaw_right = 0.0;
     }
     pub fn key_input(&mut self, key: KeyboardInput, slow_mode: bool) {
-        use VirtualKeyCode::*;
+        use VirtualKeyCode::{LShift, Space, A, D, E, Q, S, W};
         if key.virtual_keycode.is_none() {
             return;
         }

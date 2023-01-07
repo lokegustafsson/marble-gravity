@@ -57,14 +57,14 @@ pub mod outer {
             }
 
             let input: WorkerInput = WorkerInput {
-                physics: physics.clone(),
+                physics: *physics,
                 target_instant: target,
             };
             let promise = worker_outer(bytemuck::cast_slice(&[input]));
             wasm_bindgen_futures::spawn_local(async move {
                 let output_data: Vec<u64> =
                     BigUint64Array::from(JsFuture::from(promise).await.unwrap()).to_vec();
-                if let &[WorkerOutput { physics, result }] = bytemuck::cast_slice(&*output_data) {
+                if let &[WorkerOutput { physics, result }] = bytemuck::cast_slice(&output_data) {
                     proxy.send_event((Box::new(physics), result)).unwrap();
                 } else {
                     unreachable!();

@@ -174,7 +174,7 @@ pub fn run(event_loop: EventLoop<PhysicsEvent>, window: Window, mut graphics: Gr
                 let instant_pre_graphics = Instant::now();
                 graphics.render(
                     spheretree::make_sphere_tree(
-                        &physics.physics.bodies(),
+                        physics.physics.bodies(),
                         camera.world_to_camera(),
                     ),
                     camera.rotation(),

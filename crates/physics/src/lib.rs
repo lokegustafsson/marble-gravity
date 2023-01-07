@@ -50,7 +50,7 @@ impl Physics {
             match lag {
                 lag if lag < Some(PHYSICS_DELTA_TIME) => break,
                 lag if lag > Some(PHYSICS_MAX_BEHIND_TIME) => {
-                    let new_timestamp = target - PHYSICS_DELTA_TIME;
+                    let new_timestamp = target.checked_sub(PHYSICS_DELTA_TIME).unwrap();
                     log::error!(
                         "Physics computation far behind, dropping {}ms",
                         (new_timestamp - self.timestamp).as_millis()

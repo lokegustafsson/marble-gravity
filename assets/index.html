@@ -2,6 +2,7 @@
 <html>
   <head>
     <script src="./module-workers-polyfill.js"></script>
+    <title>Marble Gravity</title>
   </head>
   <body id="canvas">
     <script async type="module">
@@ -9,12 +10,32 @@
       await init();
       await start();
       console.log("WASM Loaded");
+      document.getElementById("spinner").remove();
     </script>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      #spinner {
+        animation: rotating 8s linear infinite;
+        width: 100vw;
+        height: 100vh;
+        display: grid;
+        place-items: center;
+        font-size: min(10vh, 10vw);
+      }
+      @keyframes rotating {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+    <div id="spinner">
+      <div>Loading</div>
+    </div>
   </body>
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-    }
-  </style>
 </html>

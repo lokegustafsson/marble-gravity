@@ -1,4 +1,4 @@
-{ system, cargo2nix, crane, nixpkgs, pkgs, lib }:
+{ system, rust-toolchain, cargo2nix, crane, nixpkgs, pkgs, lib }:
 let
   wasmPkgs = import nixpkgs {
     inherit system;
@@ -25,11 +25,7 @@ let
   };
 
   webpage = let
-    craneLib = (crane.mkLib pkgs).overrideToolchain
-      (pkgs.rust-bin.nightly.latest.default.override {
-        extensions = [ "rust-src" ];
-        targets = [ "wasm32-unknown-unknown" ];
-      });
+    craneLib = (crane.mkLib pkgs).overrideToolchain rust-toolchain;
     mainWasm = craneLib.buildPackage {
       src = lib.cleanSourceWith {
         src = ./.;

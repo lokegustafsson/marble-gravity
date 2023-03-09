@@ -40,14 +40,14 @@ web-sys = { version = "0.3", features = [
 ]}
 addr2line = "=0.17.0"
 cc = "=1.0.76"
-compiler_builtins = "0.1"
+compiler_builtins = "=0.1.84"
 dlmalloc = "=0.2.3"
-fortanix-sgx-abi = "0.5"
-getopts = "0.2"
-gimli = "0.26.1"
+fortanix-sgx-abi = "=0.5.0"
+getopts = "=0.2.21"
+gimli = "=0.26.1"
 miniz_oxide = "=0.5.3"
 object = "=0.29.0"
-rustc-demangle = "0.1"
+rustc-demangle = "=0.1.21"
 
 [build-dependencies]
 blake3 = "1"

@@ -66,13 +66,13 @@
             })
           ];
         };
-        wasm = import ./wasm.nix {
-          inherit system cargo2nix crane nixpkgs pkgs lib;
-        };
-        rust-toolchain = (pkgs.rust-bin.nightly.latest.default.override {
+        rust-toolchain = (pkgs.rust-bin.nightly."2022-12-08".default.override {
           extensions = [ "rust-src" ];
           targets = [ "wasm32-unknown-unknown" "x86_64-unknown-linux-gnu" ];
         });
+        wasm = import ./wasm.nix {
+          inherit system rust-toolchain cargo2nix crane nixpkgs pkgs lib;
+        };
       in {
         devShells.default = rust.rustPkgs.workspaceShell {
           packages = let p = pkgs;

@@ -2,11 +2,11 @@ This fun toy simulates a bunch of semitransparent, reflective marbles under grav
 inelastic collisions!
 
 Configuration is done by editing constants (and the ray recursion depth in the fragment shader) and
-recompiling. To build, make sure you have the build and run-time dependencies listed in `flake.nix`
-sorted and use cargo for Rust stable.
+recompiling.
 
-I have unfortunately not managed to produce a working build of this for webgpu/the browser, but I
-hope to do so in the future.
+The default for `nix run` is to start a local webserver. Marble Gravity works through webgl2, kind
+of. It works on some people's computers in firefox. I should revisit once webgpu is a(n
+established) thing.
 
 Some screenshots:
 <p align="center">

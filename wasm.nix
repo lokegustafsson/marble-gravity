@@ -1,27 +1,18 @@
-{ system, rust-toolchain, cargo2nix, crane, nixpkgs, pkgs, lib }:
+{ system, rust-toolchain, crane, nixpkgs, pkgs, lib }:
 let
-  wasmPkgs = import nixpkgs {
-    inherit system;
-    crossSystem = {
-      config = "wasm32-unknown-wasi-unknown";
-      system = "wasm32-wasi";
-      useLLVM = true;
-    };
-    overlays = [ cargo2nix.overlays.default ];
-  };
-
   wasm-bindgen = pkgs.rustPlatform.buildRustPackage rec {
     pname = "wasm-bindgen-cli";
-    version = "0.2.83";
+    version = "0.2.92";
     src = pkgs.fetchCrate {
       inherit pname version;
-      sha256 = "sha256-+PWxeRL5MkIfJtfN3/DjaDlqRgBgWZMa6dBt1Q+lpd0=";
+      sha256 = "sha256-1VwY8vQy7soKEgbki4LD+v259751kKxSxmo/gqE6yV0=";
     };
-    cargoSha256 = "sha256-GwLeA6xLt7I+NzRaqjwVpt1pzRex1/snq30DPv4FR+g=";
+    cargoSha256 = "sha256-aACJ+lYNEU8FFBs158G1/JG8sc6Rq080PeKCMnwdpH0=";
     nativeBuildInputs = [ pkgs.pkg-config ];
     buildInputs = [ pkgs.openssl ];
     checkInputs = [ pkgs.nodejs ];
-    cargoTestFlags = [ "--test=interface-types" ];
+    doCheck = false;
+    #cargoTestFlags = [ "--test=interface-types" ];
   };
 
   webpage = let
@@ -54,29 +45,23 @@ let
       doCheck = false;
       buildInputs = [ ];
     };
-  in derivation {
-    name = "marble-gravity";
-    builder = "${pkgs.bash}/bin/bash";
-    inherit system mainWasm workerWasm;
-    args = [
-      "-c"
-      ''
-        export PATH="$coreutils/bin:$wasmbindgen/bin"
-        wasm-bindgen --target web $mainWasm/lib/marble_gravity.wasm \
-          --no-typescript --out-dir $out/
-        wasm-bindgen --target web $workerWasm/lib/worker.wasm \
-          --no-typescript --out-dir $out/
-        cp $indexhtml $out/index.html
-        cp $computejs $out/compute.js
-        cp $workermainjs $out/workermain.js
-        cp $polyfill $out/module-workers-polyfill.js
-      ''
-    ];
+  in pkgs.runCommand "marble-gravity" {
+    inherit mainWasm workerWasm;
     indexhtml = ./assets/index.html;
     computejs = ./assets/compute.js;
     workermainjs = ./assets/workermain.js;
     polyfill = ./assets/module-workers-polyfill.js;
-    coreutils = pkgs.coreutils;
-    wasmbindgen = wasm-bindgen;
-  };
+    buildInputs = [ wasm-bindgen ];
+  } ''
+    set -v
+    mkdir -p $out
+    wasm-bindgen --target web $mainWasm/lib/marble_gravity.wasm \
+      --no-typescript --out-dir $out/
+    wasm-bindgen --target web $workerWasm/lib/worker.wasm \
+      --no-typescript --out-dir $out/
+    cp $indexhtml $out/index.html
+    cp $computejs $out/compute.js
+    cp $workermainjs $out/workermain.js
+    cp $polyfill $out/module-workers-polyfill.js
+  '';
 in { inherit webpage wasm-bindgen; }

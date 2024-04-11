@@ -98,10 +98,9 @@ impl Graphics {
             &skybox_sampler,
         );
 
-        let font = wgpu_glyph::ab_glyph::FontArc::try_from_slice(include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../assets/Roboto-Regular-Digits.ttf"
-        )))
+        let font = wgpu_glyph::ab_glyph::FontArc::try_from_slice(include_bytes!(
+            "../assets/Roboto-Regular-Digits.ttf"
+        ))
         .unwrap();
         let glyph_brush = wgpu_glyph::GlyphBrushBuilder::using_font(font)
             .build(&device, parameters.texture_format);
@@ -364,30 +363,12 @@ fn make_skybox_texture_view_and_sampler(
 ) -> (wgpu::TextureView, wgpu::Sampler) {
     let texture = {
         let png: [&[u8]; 6] = [
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../assets/skybox/right.png"
-            )),
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../assets/skybox/left.png"
-            )),
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../assets/skybox/top.png"
-            )),
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../assets/skybox/bottom.png"
-            )),
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../assets/skybox/front.png"
-            )),
-            include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../assets/skybox/back.png"
-            )),
+            include_bytes!("../assets/skybox/right.png"),
+            include_bytes!("../assets/skybox/left.png"),
+            include_bytes!("../assets/skybox/top.png"),
+            include_bytes!("../assets/skybox/bottom.png"),
+            include_bytes!("../assets/skybox/front.png"),
+            include_bytes!("../assets/skybox/back.png"),
         ];
         let images = png.map(|p| image::load_from_memory(p).unwrap().into_rgba8());
         let (width, height) = images[0].dimensions();

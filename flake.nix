@@ -1,88 +1,71 @@
 {
   inputs = {
-    flake-compat = {
-      url = "github:edolstra/flake-compat";
-      flake = false;
+    systems.url = "github:nix-systems/default";
+    flake-utils = {
+      url = "github:numtide/flake-utils";
+      inputs.systems.follows = "systems";
     };
-    flake-utils.url = "github:numtide/flake-utils";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.flake-utils.follows = "flake-utils";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    cargo2nix = {
-      url = "github:cargo2nix/cargo2nix";
-      inputs.flake-compat.follows = "flake-compat";
-      inputs.flake-utils.follows = "flake-utils";
+    nixGL = {
+      url = "github:nix-community/nixGL";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.rust-overlay.follows = "rust-overlay";
+      inputs.flake-utils.follows = "flake-utils";
     };
+
     crane = {
       url = "github:ipetkov/crane";
-      inputs.flake-compat.follows = "flake-compat";
-      inputs.flake-utils.follows = "flake-utils";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.rust-overlay.follows = "rust-overlay";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, cargo2nix, crane, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs = inputs:
+    inputs.flake-utils.lib.eachSystem
+    [ inputs.flake-utils.lib.system.x86_64-linux ] (system:
       let
-        pkgs = import nixpkgs {
+        pkgs = import inputs.nixpkgs {
           inherit system;
-          overlays = [ cargo2nix.overlays.default ];
-          config.allowUnfree = true;
+          overlays =
+            [ inputs.rust-overlay.overlays.default inputs.nixGL.overlay ];
         };
-        lib = nixpkgs.lib;
-        rust = import ./rust.nix {
-          inherit lib pkgs;
-          workspace-binaries = {
-            marble-gravity = {
-              rpath = p: [ ];
-              run_time_ld_library_path = p: [
-                # xorg
-                p.xorg.libX11
-                p.xorg.libXcursor
-                p.xorg.libXi
-                p.xorg.libXrandr
-                # vulkan
-                p.vulkan-loader
-                # opengl
-                p.libglvnd
-              ];
-            };
-          };
-          extra-overrides = { mkNativeDep, mkEnvDep, p }: [
-            (mkNativeDep "x11" [ p.pkg-config p.xorg.libX11 ])
-            (mkNativeDep "shaderc-sys" [ p.cmake p.git ])
-            (mkNativeDep "freetype-sys" [ p.cmake ])
-            (mkNativeDep "expat-sys" [ p.cmake ])
-            (mkNativeDep "servo-fontconfig-sys" [ p.pkg-config ])
-            (mkEnvDep "servo-fontconfig-sys" {
-              PKG_CONFIG_PATH_FOR_TARGET =
-                "${pkgs.fontconfig.dev}/lib/pkgconfig:${pkgs.freetype.dev}/lib/pkgconfig";
-            })
-          ];
-        };
-        rust-toolchain = (pkgs.rust-bin.nightly."2022-12-08".default.override {
-          extensions = [ "rust-src" ];
+        lib = inputs.nixpkgs.lib;
+        cargoNix = import ./Cargo.nix { inherit pkgs; };
+        marble-gravity = cargoNix.workspaceMembers.marble-gravity.build;
+
+        rust-toolchain = pkgs.rust-bin.nightly."2024-04-11".default.override {
+          extensions = [ "rust-src" "rust-analyzer" ];
           targets = [ "wasm32-unknown-unknown" "x86_64-unknown-linux-gnu" ];
-        });
+        };
         wasm = import ./wasm.nix {
-          inherit system rust-toolchain cargo2nix crane nixpkgs pkgs lib;
+          inherit (inputs) nixpkgs crane;
+          inherit system rust-toolchain pkgs lib;
         };
       in {
-        devShells.default = rust.rustPkgs.workspaceShell {
+        formatter = pkgs.writeShellApplication {
+          name = "format";
+          runtimeInputs = [ pkgs.rust-bin.stable.latest.default pkgs.nixfmt ];
+          text = ''
+            set -v
+            cargo fmt
+            find . -name '*.nix' | grep -v Cargo.nix | xargs nixfmt'';
+        };
+
+        devShells.default = pkgs.mkShell {
           packages = let p = pkgs;
           in [
-            rust-toolchain
-            cargo2nix.outputs.packages.${system}.cargo2nix
             p.cargo-flamegraph
             p.cargo-outdated
+            p.cmake
+            p.crate2nix
+            p.fontconfig
             p.fontforge-gtk
-            p.rust-bin.stable.latest.clippy
+            p.nixgl.nixGLIntel
+            p.pkg-config
+            rust-toolchain
             wasm.wasm-bindgen
             (p.writeShellScriptBin "cargo-udeps" ''
               export RUSTC="${rust-toolchain}/bin/rustc"
@@ -90,10 +73,24 @@
               exec "${p.cargo-udeps}/bin/cargo-udeps" "$@"
             '')
           ];
+          PKG_CONFIG_PATH_FOR_TARGET =
+            "${pkgs.fontconfig.dev}/lib/pkgconfig:${pkgs.freetype.dev}/lib/pkgconfig";
+          shellHook = ''
+            git rev-parse --is-inside-work-tree > /dev/null && [ -n "$CARGO_TARGET_DIR_PREFIX" ] && \
+            export CARGO_TARGET_DIR="$CARGO_TARGET_DIR_PREFIX$(git rev-parse --show-toplevel)"
+            exec nixGLIntel zsh
+          '';
         };
 
-        packages = rust.packages // {
-          default = rust.packages.marble-gravity;
+        packages = rec {
+          default = marbleNixGLIntel;
+          marbleNixGLIntel =
+            pkgs.writeShellScriptBin "marble-gravity-nixGLIntel" ''
+              exec ${lib.getExe pkgs.nixgl.nixGLIntel} ${
+                lib.getExe marble-gravity
+              }
+            '';
+          inherit marble-gravity;
           webpage = wasm.webpage;
         };
         apps = rec {
